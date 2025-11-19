@@ -58,6 +58,8 @@ function MenuState:enter()
     -- Initialize Starfield if not present
     if not self.stars then
         self.stars = Utils.generate_starfield()
+        local sw, sh = love.graphics.getDimensions()
+        self.starfieldBounds = {w = sw, h = sh}
     end
 
     -- Fonts
@@ -105,17 +107,24 @@ function MenuState:enter()
 end
 
 function MenuState:update(dt)
-    -- 1. Update Starfield (Parallax/Movement effect)
     local sw = love.graphics.getWidth()
     local sh = love.graphics.getHeight()
+
+    -- Regenerate starfield if window size has changed significantly
+    if not self.starfieldBounds or self.starfieldBounds.w ~= sw or self.starfieldBounds.h ~= sh then
+        self.stars = Utils.generate_starfield()
+        self.starfieldBounds = {w = sw, h = sh}
+    end
+
+    -- 1. Update Starfield (subtle parallax drift)
     for _, star in ipairs(self.stars) do
-        -- Move stars to the left; multiply speed by screen width for consistent motion
-        star.x = star.x - (star.speed * sw * 15) * dt 
-        
-        -- Wrap around screen
-        if star.x < 0 then 
-            star.x = sw 
-            star.y = math.random(0, love.graphics.getHeight())
+        -- Drift left with layer-based speed (scaled by width for consistency)
+        star.x = star.x - (star.speed * sw * 12) * dt
+
+        local wrap_offset = (star.glow_radius or star.size or 1) * 2
+        if star.x < -wrap_offset then
+            star.x = sw + wrap_offset
+            star.y = math.random(0, sh)
         end
     end
 
@@ -191,13 +200,20 @@ function MenuState:draw()
     -- 1. Draw Background (Deep Space)
     local bg = Theme.getBackgroundColor()
     love.graphics.clear(bg[1], bg[2], bg[3], bg[4] or 1)
-    
-    -- 2. Draw Stars
-    love.graphics.setColor(1, 1, 1)
+
+    -- 2. Draw Stars with subtle glows and color variance
     for _, star in ipairs(self.stars) do
-        -- Use alpha for depth effect
-        love.graphics.setColor(1, 1, 1, star.alpha or 0.5) 
-        love.graphics.circle("fill", star.x, star.y, star.size or 1)
+        local x = math.floor(star.x) + 0.5
+        local y = math.floor(star.y) + 0.5
+
+        if star.glow_radius then
+            love.graphics.setColor(star.color[1], star.color[2], star.color[3], star.glow_alpha)
+            love.graphics.circle("fill", x, y, star.glow_radius)
+        end
+
+        love.graphics.setColor(star.color[1], star.color[2], star.color[3], star.alpha)
+        love.graphics.setPointSize(star.size)
+        love.graphics.points(x, y)
     end
 
     -- 3. Draw Title "NOVUS"
