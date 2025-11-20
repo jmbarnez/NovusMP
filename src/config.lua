@@ -10,6 +10,7 @@ return {
     MY_NETWORK_ID = tostring(os.time() .. math.random(1000,9999)),
     PORT = 12345,
     SERVER_HOST = "localhost",
+    CONNECT_TIMEOUT = 2.0,
     SEND_RATE = 0.03,
 
     -- Physics / Gameplay

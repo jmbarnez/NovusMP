@@ -3,301 +3,305 @@ local Config = require "src.config"
 
 --[[ 
     ===========================================================================
-    NETWORK PROTOCOL DOCUMENTATION
+    HOST AUTHORITATIVE PROTOCOL
     ===========================================================================
-    Format: string separated by pipes "|".
     
-    1. State Update (Sent by Client & Host)
-       "STATE | NetworkID | X | Y | Rotation"
-    
-    2. Welcome (Sent by Host on connect)
+    1. INPUT (Client -> Host)
+       "INPUT | InputID (NetworkID) | Thrust (0/1) | Turn (-1/0/1)"
+       sent frequently so Host knows what the player wants to do.
+
+    2. SNAPSHOT (Host -> Client)
+       "SNAP | Count | [ID, SecX, SecY, X, Y, R] | [ID, SecX...]"
+       Host broadcasts the state of ALL dynamic entities.
+
+    3. WELCOME (Host -> Client)
        "WELCOME | AssignedNetworkID"
-       
-    3. Disconnect (Sent by Host to all others)
+       Tells the client who they are.
+
+    4. DISCONNECT (Host -> Client)
        "DISCONNECT | NetworkID"
+       Tells clients to delete an entity.
     ===========================================================================
 ]]
 
 -- ============================================================================
--- LOW LEVEL SOCKET WRAPPER (ENet Helper)
+-- LOW LEVEL SOCKET WRAPPER
 -- ============================================================================
-
 local EnetSocket = {}
 EnetSocket.__index = EnetSocket
 
 function EnetSocket.new(role)
     if not Config.NETWORK_AVAILABLE then return nil end
-
-    local listen_address = string.format("*:%d", Config.PORT)
-    local connect_address = string.format("%s:%d", Config.SERVER_HOST, Config.PORT)
+    local listen_addr = string.format("*:%d", Config.PORT)
+    local connect_addr = string.format("%s:%d", Config.SERVER_HOST, Config.PORT)
     local host, peer
-    
+
     if role == "HOST" then
-        host = Config.ENET.host_create(listen_address)
-        print("Network: Created HOST at " .. listen_address)
+        host = Config.ENET.host_create(listen_addr)
+        print("Network: Hosting at " .. listen_addr)
     elseif role == "CLIENT" then
         host = Config.ENET.host_create()
-        peer = host and host:connect(connect_address)
-        print("Network: Connecting to " .. connect_address)
-    else
-        -- Single player or invalid
-        return nil
+        peer = host and host:connect(connect_addr)
+        print("Network: Connecting to " .. connect_addr)
     end
 
     if not host then return nil end
-
     return setmetatable({
-        role = role,
-        host = host,
-        peer = peer,      -- Only relevant for CLIENT
-        queue = {},       -- Event queue
-        peers = {}        -- Map of Connected Peers (for HOST)
+        role = role, host = host, peer = peer,
+        queue = {}, peers = {}
     }, EnetSocket)
 end
 
--- Polls ENet for events and queues them
-function EnetSocket:service(timeout)
+function EnetSocket:service()
     if not self.host then return end
-    local event = self.host:service(timeout or 0)
+    local event = self.host:service(0)
     while event do
         if event.type == "connect" then
-            self.peers[event.peer:connect_id()] = event.peer
+            if self.role == "HOST" then self.peers[event.peer:connect_id()] = event.peer end
         elseif event.type == "disconnect" then
-            self.peers[event.peer:connect_id()] = nil
+            if self.role == "HOST" then self.peers[event.peer:connect_id()] = nil end
         end
         table.insert(self.queue, event)
         event = self.host:service(0)
     end
 end
 
--- Process the queued events with a callback
-function EnetSocket:drain(callback)
-    local event = table.remove(self.queue, 1)
-    while event do
-        callback(event)
-        event = table.remove(self.queue, 1)
-    end
-end
-
--- Send data to specific peer or broadcast if host
-function EnetSocket:send(data, target_peer, channel, flag)
-    channel = channel or 0
-    flag = flag or "unreliable" -- "reliable" or "unreliable"
-
-    if self.role == "HOST" then
-        if target_peer then
-            target_peer:send(data, channel, flag)
-        else
-            self.host:broadcast(data, channel, flag)
-        end
-    elseif self.peer then
-        self.peer:send(data, channel, flag)
-    end
-end
-
--- Host utility: Send to everyone EXCEPT one peer (e.g., the sender)
-function EnetSocket:broadcast_except(data, except_peer, channel, flag)
-    if self.role ~= "HOST" then return end
-    channel = channel or 0
+function EnetSocket:send(data, peer, flag)
     flag = flag or "unreliable"
-
-    for _, peer in pairs(self.peers) do
-        if not except_peer or peer:connect_id() ~= except_peer:connect_id() then
-            peer:send(data, channel, flag)
-        end
+    if self.role == "HOST" then
+        if peer then peer:send(data, 0, flag) else self.host:broadcast(data, 0, flag) end
+    elseif self.peer then
+        self.peer:send(data, 0, flag)
     end
 end
 
--- Helper to split string by pipe
-local function parse_packet(data)
-    local segments = {}
-    for segment in string.gmatch(data, "[^|]+") do
-        table.insert(segments, segment)
-    end
-    return segments
+local function split(str)
+    local t = {}
+    for s in string.gmatch(str, "[^|]+") do table.insert(t, s) end
+    return t
 end
 
-
 -- ============================================================================
--- CONCORD SYSTEM: NetworkSync
--- Handles smoothing (interpolation) of remote entities
+-- SYNC SYSTEM (Interpolation)
 -- ============================================================================
-
-local NetworkSyncSystem = Concord.system({
-    pool = {"network_sync", "transform"}
-})
+local NetworkSyncSystem = Concord.system({ pool = {"network_sync", "transform", "sector"} })
 
 function NetworkSyncSystem:update(dt)
-    -- Lerp factor determines how quickly visual position catches up to network data
-    local lerp_speed = 1.0 / math.max(Config.SEND_RATE, 0.01)
+    -- Clients interpolate towards the server's truth
+    local lerp = 10.0 -- Higher = Snappier, Lower = Smoother
     
     for _, e in ipairs(self.pool) do
         local sync = e.network_sync
         local t = e.transform
-        
-        -- Linear Interpolation for Position
-        t.x = t.x + (sync.target_x - t.x) * lerp_speed * dt
-        t.y = t.y + (sync.target_y - t.y) * lerp_speed * dt
-        
-        -- Angular Interpolation (Shortest path)
-        local diff_r = sync.target_r - t.r
-        -- Normalize difference to -PI to +PI
-        while diff_r < -math.pi do diff_r = diff_r + math.pi * 2 end
-        while diff_r > math.pi do diff_r = diff_r - math.pi * 2 end
-        
-        t.r = t.r + diff_r * lerp_speed * dt
+        local s = e.sector
+
+        -- Simple sector check: If sector differs too much, just snap (teleport)
+        if s.x ~= sync.target_sector_x or s.y ~= sync.target_sector_y then
+             -- Snap immediately if sector changes to avoid interpolation artifacts across boundaries
+             s.x = sync.target_sector_x
+             s.y = sync.target_sector_y
+             t.x = sync.target_x
+             t.y = sync.target_y
+        else
+            -- Interpolate
+            t.x = t.x + (sync.target_x - t.x) * lerp * dt
+            t.y = t.y + (sync.target_y - t.y) * lerp * dt
+            
+            -- Angle wrap
+            local dr = sync.target_r - t.r
+            while dr < -math.pi do dr = dr + math.pi * 2 end
+            while dr > math.pi do dr = dr - math.pi * 2 end
+            t.r = t.r + dr * lerp * dt
+        end
     end
 end
 
-
 -- ============================================================================
--- CONCORD SYSTEM: NetworkIO
--- Handles sending packets and receiving packets (Parsing)
+-- IO SYSTEM (Logic)
 -- ============================================================================
-
 local NetworkIOSystem = Concord.system({
-    sendPool = {"input", "transform"} -- Entities that move locally and need to broadcast state
+    inputs = {"input", "network_identity"}, -- Entities we send inputs for
+    networked = {"network_identity", "transform", "sector"} -- Entities we sync
 })
 
 function NetworkIOSystem:init()
-    self.time_since_send = 0
-    self.entity_map = {}  -- Map: network_id (string) -> ECS Entity
-    self.peer_map = {}    -- Map: peer_connect_id -> network_id (string)
-    self.role = nil
+    self.role = "SINGLE"
     self.socket = nil
+    self.timer = 0
+    self.send_rate = 0.03 -- 30Hz
+    self.entity_map = {} -- ID -> Entity
 end
 
 function NetworkIOSystem:setRole(role)
     self.role = role
     self.socket = EnetSocket.new(role)
-    
-    if role ~= "SINGLE" and not self.socket and Config.NETWORK_AVAILABLE then
-        print("Networking unavailable: ENet host could not be created.")
-    end
 end
 
 function NetworkIOSystem:update(dt)
     if not self.socket then return end
-
-    -- 1. Receive Data
-    self.socket:service(0)
-    self.socket:drain(function(event)
-        if event.type == "receive" then
-            self:handle_packet(event.data, event.peer)
-        elseif event.type == "connect" then
-            self:on_peer_connect(event.peer)
-        elseif event.type == "disconnect" then
-            self:on_peer_disconnect(event.peer)
-        end
-    end)
-
-    -- 2. Send Data (throttled by Config.SEND_RATE)
-    self.time_since_send = self.time_since_send + dt
-    if self.time_since_send < Config.SEND_RATE then return end
-
-    self.time_since_send = 0
     
-    -- Broadcast local player state
-    for _, e in ipairs(self.sendPool) do
+    -- 1. Service Network
+    self.socket:service()
+    local event = table.remove(self.socket.queue, 1)
+    while event do
+        self:handleEvent(event)
+        event = table.remove(self.socket.queue, 1)
+    end
+
+    -- 2. Send Packets
+    self.timer = self.timer + dt
+    if self.timer >= self.send_rate then
+        self.timer = 0
+        if self.role == "CLIENT" then self:clientSend() end
+        if self.role == "HOST" then self:hostSend() end
+    end
+end
+
+-- === SENDING ===
+
+function NetworkIOSystem:clientSend()
+    -- Send "INPUT" for my local player
+    for _, e in ipairs(self.inputs) do
+        -- Only send input for MY player
+        if e.network_identity.id == Config.MY_NETWORK_ID then
+            local i = e.input
+            -- Packet: INPUT|ID|THRUST(1/0)|TURN
+            local packet = string.format("INPUT|%s|%d|%d", 
+                Config.MY_NETWORK_ID, 
+                i.thrust and 1 or 0, 
+                i.turn
+            )
+            self.socket:send(packet, nil, "unreliable")
+        end
+    end
+end
+
+function NetworkIOSystem:hostSend()
+    -- Host gathers ALL networked entities and sends a Snapshot
+    -- Packet: SNAP | Count | ID | Sx | Sy | x | y | r | ID...
+    local parts = {}
+    local count = 0
+    
+    for _, e in ipairs(self.networked) do
         local t = e.transform
-        -- Format: STATE|MyID|X|Y|Rotation
-        local packet = string.format("STATE|%s|%.3f|%.3f|%.3f", Config.MY_NETWORK_ID, t.x, t.y, t.r)
-        self.socket:send(packet)
-    end
-end
-
--- --- Event Handlers ---
-
-function NetworkIOSystem:on_peer_connect(peer)
-    if self.role == "HOST" then
-        -- Send a welcome packet so the new peer knows who we are (or assigns them an ID, conceptually)
-        local welcome = string.format("WELCOME|%s", Config.MY_NETWORK_ID)
-        self.socket:send(welcome, peer, 0, "reliable")
-    end
-end
-
-function NetworkIOSystem:on_peer_disconnect(peer)
-    local peer_id = peer:connect_id()
-    
-    if self.role == "HOST" then
-        print(string.format("Peer disconnected: %s", peer_id))
+        local s = e.sector
+        local nid = e.network_identity.id
         
-        local net_id = self.peer_map[peer_id]
-        if net_id then
-            -- 1. Remove Entity from local world
-            if self.entity_map[net_id] then
-                self.entity_map[net_id]:destroy()
-                self.entity_map[net_id] = nil
-            end
-            
-            -- 2. Tell other clients to remove this Entity
-            local disconnect_packet = string.format("DISCONNECT|%s", net_id)
-            self.socket:broadcast_except(disconnect_packet, peer, 0, "reliable")
-            
-            self.peer_map[peer_id] = nil
-        end
+        table.insert(parts, string.format("%s|%d|%d|%.1f|%.1f|%.2f", 
+            nid, s.x, s.y, t.x, t.y, t.r
+        ))
+        count = count + 1
+    end
+    
+    if count > 0 then
+        local packet = "SNAP|" .. count .. "|" .. table.concat(parts, "|")
+        self.socket:send(packet, nil, "unreliable")
     end
 end
 
-function NetworkIOSystem:handle_packet(data, sender_peer)
-    local items = parse_packet(data)
-    if #items == 0 then return end
-    local op = items[1]
-    
-    -- === HANDLE STATE UPDATES ===
-    if op == "STATE" then
-        if #items < 5 then return end
-        local id = items[2]
-        
-        -- Ignore our own packets if they echo back
-        if id == Config.MY_NETWORK_ID then return end
+-- === RECEIVING ===
 
-        -- Parse coordinates
-        local x, y, r = tonumber(items[3]), tonumber(items[4]), tonumber(items[5])
-        if not (x and y and r) then return end -- Packet corruption check
-
-        -- If we are HOST, relay this packet to everyone else
+function NetworkIOSystem:handleEvent(event)
+    if event.type == "connect" then
         if self.role == "HOST" then
-            self.peer_map[sender_peer:connect_id()] = id
-            self.socket:broadcast_except(data, sender_peer, 0, "unreliable")
+            -- Client joined. Create a ship for them.
+            local new_id = tostring(math.random(10000, 99999))
+            print("Host: Client connected. Spawning ID: " .. new_id)
+            
+            -- Create Server-Side Entity
+            self:getWorld():emit("spawn_player", new_id, event.peer)
+            
+            -- Tell Client who they are
+            self.socket:send("WELCOME|" .. new_id, event.peer, "reliable")
         end
+    elseif event.type == "disconnect" then
+        if self.role == "HOST" then
+            -- Find entity belonging to this peer and destroy it
+            -- (For now, we rely on ID mapping or simple cleanup later)
+            print("Host: Client disconnected")
+        end
+    elseif event.type == "receive" then
+        local data = split(event.data)
+        local op = data[1]
 
-        -- Update or Create the remote entity
+        if self.role == "HOST" then
+            if op == "INPUT" then
+                -- Update server-side input component
+                local id = data[2]
+                local entity = self.entity_map[id]
+                if entity and entity.input then
+                    entity.input.thrust = (tonumber(data[3]) == 1)
+                    entity.input.turn = tonumber(data[4])
+                end
+            end
+        elseif self.role == "CLIENT" then
+            if op == "WELCOME" then
+                local my_id = data[2]
+                Config.MY_NETWORK_ID = my_id
+                print("Client: Assigned ID " .. my_id)
+            elseif op == "SNAP" then
+                self:processSnapshot(data)
+            end
+        end
+    end
+end
+
+function NetworkIOSystem:processSnapshot(data)
+    -- Format: SNAP | Count | [ID, Sx, Sy, x, y, r] ...
+    local count = tonumber(data[2])
+    local index = 3
+    local step = 6 -- Params per entity
+    
+    for i = 1, count do
+        if index + step - 1 > #data then break end
+        
+        local id = data[index]
+        local sx = tonumber(data[index+1])
+        local sy = tonumber(data[index+2])
+        local x  = tonumber(data[index+3])
+        local y  = tonumber(data[index+4])
+        local r  = tonumber(data[index+5])
+        
         local entity = self.entity_map[id]
         
-        if entity then
-            -- Update existing
-            local sync = entity.network_sync
-            if sync then
-                sync.target_x, sync.target_y, sync.target_r = x, y, r
-            end
-        else
-            -- Create new representation of remote player
+        if not entity then
+            -- Entity doesn't exist locally, SPAWN IT
             local world = self:getWorld()
-            local e = Concord.entity(world)
-            e:give("transform", x, y, r)
-            e:give("render", { 1, 0, 0 }) -- Red color for enemies/others
-            e:give("network_identity", id)
-            e:give("network_sync", x, y, r)
+            local is_me = (id == Config.MY_NETWORK_ID)
             
-            self.entity_map[id] = e
-        end
-
-    -- === HANDLE DISCONNECTIONS ===
-    elseif op == "DISCONNECT" then
-        local id = items[2]
-        local entity = self.entity_map[id]
-        if entity then
-            entity:destroy()
-            self.entity_map[id] = nil
-            print("Network: Removed disconnected entity " .. id)
+            entity = Concord.entity(world)
+            entity:give("transform", x, y, r)
+            entity:give("sector", sx, sy)
+            entity:give("render", is_me and {0.2, 1, 0.2} or {1, 0.2, 0.2}) -- Green if me, Red if other
+            entity:give("network_identity", id)
+            entity:give("network_sync", x, y, r)
+            
+            -- IMPORTANT: If this is ME, I need an Input component so InputSystem can read my baton
+            if is_me then
+                entity:give("input") -- Local input storage
+                entity:give("pilot") -- Tag as local player
+                entity:give("controlling", entity) -- Self-controlling
+            end
+            
+            self.entity_map[id] = entity
+        else
+            -- Update Target for Interpolation
+            if entity.network_sync then
+                local ns = entity.network_sync
+                ns.target_sector_x = sx
+                ns.target_sector_y = sy
+                ns.target_x = x
+                ns.target_y = y
+                ns.target_r = r
+            end
         end
         
-        -- Relay disconnection if we are Host
-        if self.role == "HOST" then
-            self.socket:broadcast_except(data, sender_peer, 0, "reliable")
-        end
+        index = index + step
     end
+end
+
+function NetworkIOSystem:getConnectionState()
+    return (self.socket and self.socket.peer) and "connected" or "connecting"
 end
 
 return {

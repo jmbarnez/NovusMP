@@ -1,65 +1,84 @@
 local Concord = require "concord"
--- We no longer strictly need Config here if stats are on the vehicle component
--- local Config = require "src.config" 
+
+-- This system now has two distinct responsibilities:
+-- 1. CLIENT/LOCAL: Read hardware inputs (Baton) and store them in the Input Component.
+-- 2. HOST: Read the Input Component and apply forces to the Physics Body.
 
 local InputSystem = Concord.system({
-    -- We look for entities that have Input and are Controlling something
-    pool = {"input", "controlling"}
+    -- Entities that have input and are controlling a vehicle
+    controllers = {"input", "controlling"}
 })
+
+function InputSystem:init()
+    self.role = "SINGLE" -- Default
+end
+
+function InputSystem:setRole(role)
+    self.role = role
+end
 
 function InputSystem:update(dt)
     local world = self:getWorld()
-
-    -- 1. Update the global input controller (Baton)
-    if world.controls then 
-        world.controls:update(dt) 
+    
+    -- 1. GATHER INPUT (Local Player Only)
+    -- If we have a controls object (baton), we update the components of our local player
+    if world.controls then
+        world.controls:update(dt)
+        
+        -- Find the entity that represents the local player
+        -- In Host/Single mode, this is the player entity.
+        -- In Client mode, this is the "Ghost" entity we send inputs for.
+        for _, e in ipairs(self.controllers) do
+            if e:has("pilot") then -- Assuming 'pilot' tag marks the local user's avatar
+                local input = e.input
+                
+                -- Calculate Turn State (-1, 0, 1)
+                local right = world.controls:get("right") or 0
+                local left = world.controls:get("left") or 0
+                input.turn = right - left
+                
+                -- Calculate Thrust State (boolean)
+                input.thrust = world.controls:down("thrust")
+            end
+        end
     end
 
-    -- 2. Process all Pilots
-    for _, pilot in ipairs(self.pool) do
-        -- Get the ship entity from the link
-        local ship = pilot.controlling.entity
+    -- 2. APPLY PHYSICS (Host / Single Player Only)
+    -- Clients do NOT run this part. They only send inputs.
+    if self.role == "HOST" or self.role == "SINGLE" then
+        for _, e in ipairs(self.controllers) do
+            local input = e.input
+            local ship = e.controlling.entity
 
-        -- Validate the ship exists and is driveable
-        if ship and ship.physics and ship.vehicle and ship.transform then
-            local phys = ship.physics
-            local trans = ship.transform
-            local stats = ship.vehicle
-            
-            if phys.body then
-                local body = phys.body
-                local current_angle = body:getAngle()
-                
+            if ship and ship.physics and ship.vehicle and ship.transform and ship.physics.body then
+                local body = ship.physics.body
+                local stats = ship.vehicle
+                local trans = ship.transform
+
                 -- A. Handle Rotation
-                local rotation_input = 0
-                if world.controls then
-                    local right = world.controls:get("right") or 0
-                    local left = world.controls:get("left") or 0
-                    rotation_input = right - left
-                end
-                
-                if rotation_input ~= 0 then
-                    current_angle = current_angle + rotation_input * stats.turn_speed * dt
+                if input.turn ~= 0 then
+                    local current_angle = body:getAngle()
+                    current_angle = current_angle + input.turn * stats.turn_speed * dt
                     body:setAngle(current_angle)
                 end
 
                 -- B. Handle Thrust
-                if world.controls and world.controls:down("thrust") then
-                    local fx = math.cos(current_angle) * stats.thrust
-                    local fy = math.sin(current_angle) * stats.thrust
+                if input.thrust then
+                    local angle = body:getAngle()
+                    local fx = math.cos(angle) * stats.thrust
+                    local fy = math.sin(angle) * stats.thrust
                     body:applyForce(fx, fy)
                 end
 
-                -- C. Cap Maximum Speed (using vehicle stats)
+                -- C. Cap Speed
                 local vx, vy = body:getLinearVelocity()
                 local speed = math.sqrt(vx * vx + vy * vy)
-
                 if speed > stats.max_speed then
                     local scale = stats.max_speed / speed
                     body:setLinearVelocity(vx * scale, vy * scale)
                 end
 
-                -- D. Sync Physics rotation back to Transform
+                -- D. Sync Transform
                 trans.r = body:getAngle()
             end
         end

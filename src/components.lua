@@ -7,7 +7,7 @@ Concord.component("transform", function(c, x, y, r)
     c.r = r or 0
 end)
 
--- [NEW] The Sector Coordinate (Integer Grid ID)
+-- The Sector Coordinate (Integer Grid ID)
 Concord.component("sector", function(c, x, y)
     c.x = x or 0
     c.y = y or 0
@@ -19,7 +19,11 @@ Concord.component("physics", function(c, body, shape, fixture)
     c.fixture = fixture
 end)
 
-Concord.component("input")
+-- [UPDATED] Input now stores the *state* of controls, not just the tag
+Concord.component("input", function(c)
+    c.thrust = false
+    c.turn = 0 -- -1 (left), 0 (none), 1 (right)
+end)
 
 Concord.component("render", function(c, color)
     c.color = color or {1, 1, 1}
@@ -41,6 +45,7 @@ end)
 -- Networking
 Concord.component("network_identity", function(c, id)
     c.id = id
+    c.owner_peer_id = nil -- Used by Host to map Entity -> ENet Peer
 end)
 
 Concord.component("network_sync", function(c, tx, ty, tr)

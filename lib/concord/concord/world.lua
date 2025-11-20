@@ -356,6 +356,35 @@ function World:emit(functionName, ...)
    return self
 end
 
+function World:on(functionName, callback)
+   if not functionName or type(functionName) ~= "string" then
+      Utils.error(2, "bad argument #1 to 'World:on' (String expected, got %s)", type(functionName))
+   end
+
+   if not Type.isCallable(callback) then
+      Utils.error(2, "bad argument #2 to 'World:on' (function expected, got %s)", type(callback))
+   end
+
+   local listeners = self.__events[functionName]
+   if not listeners then
+      listeners = {}
+      self.__events[functionName] = listeners
+   end
+
+   local system = { __enabled = true }
+
+   local wrapper = function(_, ...)
+      callback(...)
+   end
+
+   listeners[#listeners + 1] = {
+      system   = system,
+      callback = wrapper,
+   }
+
+   return self
+end
+
 --- Removes all entities from the World
 -- @treturn World self
 function World:clear()
