@@ -37,50 +37,13 @@ function RenderSystem:draw()
         camera:lookAt(cam_x, cam_y)
     end
 
-    -- 2. Draw Starfield Background (Restored & Fixed for Sectors)
-    if world.starfield then
-        -- We need a continuous coordinate for parallax, or the stars will jump
-        -- when we wrap from 5000 to -5000.
-        local abs_cam_x = (cam_sector_x * Config.SECTOR_SIZE) + cam_x
-        local abs_cam_y = (cam_sector_y * Config.SECTOR_SIZE) + cam_y
-
-        -- Wrap rendering around the current screen size so stars always cover the view
-        local wrap_w = screen_w
-        local wrap_h = screen_h
-
-        -- We draw stars in "Screen Space" (Camera ignored), calculating their positions manually
-        love.graphics.push()
-        love.graphics.origin() -- Reset any camera transforms
-        
-        local vertices = {}
-        for i, star in ipairs(world.starfield) do
-            -- Parallax Math using the continuous absolute position
-            local x = (star.x - abs_cam_x * star.speed) % wrap_w
-            local y = (star.y - abs_cam_y * star.speed) % wrap_h
-
-            x = math.floor(x) + 0.5
-            y = math.floor(y) + 0.5
-
-            if x > -10 and x < screen_w + 10 and y > -10 and y < screen_h + 10 then
-                if star.glow_radius then
-                    love.graphics.setColor(star.color[1], star.color[2], star.color[3], star.glow_alpha)
-                    love.graphics.circle("fill", x, y, star.glow_radius)
-                end
-            end
-
-            local r, g, b = star.color[1], star.color[2], star.color[3]
-            local a = star.alpha or 1
-            vertices[i] = {x, y, r, g, b, a}
-        end
-
-        if world.star_mesh and #vertices > 0 then
-            world.star_mesh:setVertices(vertices)
-            love.graphics.setColor(1, 1, 1, 1)
-            love.graphics.setPointSize(1.5)
-            love.graphics.draw(world.star_mesh)
-        end
-        love.graphics.pop()
+    -- 2. Draw Background (Nebula + Stars)
+    love.graphics.push()
+    love.graphics.origin() -- Reset transforms for background
+    if world.background then
+        world.background:draw(cam_x, cam_y, cam_sector_x, cam_sector_y)
     end
+    love.graphics.pop()
 
     -- 3. Draw World Content
     local function draw_world_content()
@@ -114,12 +77,6 @@ function RenderSystem:draw()
                 love.graphics.setColor(r.color)
                 love.graphics.polygon("line", 15, 0, -10, -10, -5, 0, -10, 10)
                 
-                -- Debug: Print Sector ID on the ship
-                if false then
-                    love.graphics.setColor(1, 1, 1, 0.5)
-                    love.graphics.print(s.x .. "," .. s.y, 20, 0)
-                end
-
                 love.graphics.pop()
             end
         end
@@ -135,13 +92,8 @@ function RenderSystem:draw()
     love.graphics.setColor(1, 1, 1)
     love.graphics.print("FPS: " .. love.timer.getFPS(), 10, 10)
     
-    -- Debug Info: Distance to next sector
-    local dist_x = (Config.SECTOR_SIZE/2) - math.abs(cam_x)
-    local dist_y = (Config.SECTOR_SIZE/2) - math.abs(cam_y)
-    
     love.graphics.print("Sector: [" .. cam_sector_x .. ", " .. cam_sector_y .. "]", 10, 30)
     love.graphics.print("Local Pos: " .. math.floor(cam_x) .. ", " .. math.floor(cam_y), 10, 50)
-    love.graphics.print("Dist to Edge: " .. math.floor(math.min(dist_x, dist_y)), 10, 70)
 end
 
 return RenderSystem

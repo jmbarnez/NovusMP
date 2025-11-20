@@ -3,47 +3,16 @@
 local Gamestate = require "hump.gamestate"
 local Utils     = require "src.utils"
 local Theme     = require "src.ui.theme"
+local Background = require "src.background"
 
-local AuroraShaderSource = [[
+-- Simplified Shader just for the Title Text (Aurora Effect on Text)
+local TitleShaderSource = [[
 extern number time;
-extern vec2 resolution;
-
-float layered_sin(vec2 uv, float speed, float scale, float offset)
-{
-    return sin(uv.x * scale + time * speed + offset);
-}
-
-vec3 aurora_color(float t)
-{
-    vec3 c1 = vec3(0.05, 0.6, 0.9);
-    vec3 c2 = vec3(0.6, 0.2, 0.85);
-    vec3 c3 = vec3(0.1, 0.9, 0.6);
-    vec3 mixed = mix(c1, c2, smoothstep(0.0, 1.0, t));
-    return mix(mixed, c3, 0.35 + 0.25 * sin(time * 0.4 + t * 3.14159265));
-}
-
-vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords)
-{
+vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords) {
     vec4 tex = Texel(texture, texture_coords) * color;
-    if (tex.a <= 0.001) {
-        return tex;
-    }
-
-    vec2 uv = pixel_coords / resolution.xy;
-    uv.y = 1.0 - uv.y;
-
-    float waveA = layered_sin(uv, 0.3, 6.0, 0.0);
-    float waveB = layered_sin(uv.yx, -0.45, 9.5, 1.5);
-    float waveC = layered_sin(uv, 0.8, 3.5, 3.2);
-
-    float band = 0.6 + 0.2 * waveA + 0.15 * waveB;
-    float shimmer = 0.5 + 0.5 * sin(time * 1.2 + uv.y * 12.0 + waveC * 1.5);
-    float intensity = clamp(band * shimmer, 0.1, 1.0);
-
-    vec3 glow = aurora_color(uv.x + waveA * 0.1) * intensity;
-    vec3 base = tex.rgb * 0.25;
-
-    return vec4(glow + base, tex.a);
+    if (tex.a <= 0.001) return tex;
+    float shimmer = 0.5 + 0.5 * sin(time * 2.0 + pixel_coords.x * 0.05);
+    return tex * vec4(1.0, 0.9 + 0.1*shimmer, 1.0, 1.0);
 }
 ]]
 
@@ -54,32 +23,17 @@ end
 local MenuState = {}
 
 function MenuState:enter()
-
-    -- Initialize Starfield if not present
-    if not self.stars then
-        local sw, sh = love.graphics.getDimensions()
-        self.stars = Utils.generate_starfield({
-            width = sw,
-            height = sh,
-            scale_density = true
-        })
-        self.starfieldBounds = {w = sw, h = sh}
-        self.starMesh = Utils.build_star_mesh(self.stars)
-    end
+    -- Initialize Background System
+    self.background = Background.new()
+    self.menuScroll = 0 -- Used to animate background in menu
 
     -- Fonts
     self.fontTitle = Theme.getFont("title")
     self.fontButton = Theme.getFont("button")
 
-    if not self.auroraShader then
-        self.auroraShader = love.graphics.newShader(AuroraShaderSource)
-        self.auroraTime = 0
-    end
-
-    if self.auroraShader then
-        local sw, sh = love.graphics.getDimensions()
-        self.auroraShader:send("time", self.auroraTime or 0)
-        self.auroraShader:send("resolution", {sw, sh})
+    if not self.titleShader then
+        self.titleShader = love.graphics.newShader(TitleShaderSource)
+        self.shaderTime = 0
     end
 
     self.buttons = {
@@ -113,35 +67,17 @@ end
 
 function MenuState:update(dt)
     local sw = love.graphics.getWidth()
-    local sh = love.graphics.getHeight()
-
-    -- Regenerate starfield if window size has changed significantly
-    if not self.starfieldBounds or self.starfieldBounds.w ~= sw or self.starfieldBounds.h ~= sh then
-        self.stars = Utils.generate_starfield({
-            width = sw,
-            height = sh,
-            scale_density = true
-        })
-        self.starfieldBounds = {w = sw, h = sh}
-        self.starMesh = Utils.build_star_mesh(self.stars)
+    
+    -- Update Background
+    if self.background then
+        self.background:update(dt)
+        -- Scroll the menu background slowly to the right
+        self.menuScroll = self.menuScroll + (dt * 30) 
     end
 
-    -- 1. Update Starfield (subtle parallax drift)
-    for _, star in ipairs(self.stars) do
-        -- Drift left with layer-based speed (scaled by width for consistency)
-        star.x = star.x - (star.speed * sw * 12) * dt
-
-        local wrap_offset = (star.glow_radius or star.size or 1) * 2
-        if star.x < -wrap_offset then
-            star.x = sw + wrap_offset
-            star.y = math.random(0, sh)
-        end
-    end
-
-    if self.auroraShader then
-        self.auroraTime = (self.auroraTime or 0) + dt
-        self.auroraShader:send("time", self.auroraTime)
-        self.auroraShader:send("resolution", {sw, sh})
+    if self.titleShader then
+        self.shaderTime = self.shaderTime + dt
+        self.titleShader:send("time", self.shaderTime)
     end
 
     self:updateButtonLayout()
@@ -207,44 +143,22 @@ end
 function MenuState:draw()
     local sw, sh = love.graphics.getDimensions()
 
-    -- 1. Draw Background (Deep Space)
-    local bg = Theme.getBackgroundColor()
-    love.graphics.clear(bg[1], bg[2], bg[3], bg[4] or 1)
-
-    -- 2. Draw Stars with subtle glows and color variance
-    local vertices = {}
-    for i, star in ipairs(self.stars) do
-        local x = math.floor(star.x) + 0.5
-        local y = math.floor(star.y) + 0.5
-
-        if star.glow_radius then
-            love.graphics.setColor(star.color[1], star.color[2], star.color[3], star.glow_alpha)
-            love.graphics.circle("fill", x, y, star.glow_radius)
-        end
-
-        local r, g, b = star.color[1], star.color[2], star.color[3]
-        local a = star.alpha or 1
-        vertices[i] = {x, y, r, g, b, a}
+    -- 1. Draw Background (New System)
+    -- We pass menuScroll as the 'camera x' to simulate movement
+    if self.background then
+        self.background:draw(self.menuScroll, 0, 0, 0)
     end
 
-    if self.starMesh and #vertices > 0 then
-        self.starMesh:setVertices(vertices)
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.setPointSize(1.5)
-        love.graphics.draw(self.starMesh)
-    end
-
-    -- 3. Draw Title "NOVUS"
+    -- 2. Draw Title "NOVUS"
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setFont(self.fontTitle)
-    if self.auroraShader then
-        love.graphics.setShader(self.auroraShader)
+    if self.titleShader then
+        love.graphics.setShader(self.titleShader)
     end
-    -- Draw title slightly above center
     love.graphics.printf("NOVUS", 0, sh * 0.08, sw, "center")
     love.graphics.setShader()
 
-    -- 4. Draw Menu Buttons (custom UI)
+    -- 3. Draw Menu Buttons (custom UI)
     self:updateButtonLayout()
 
     love.graphics.setFont(self.fontButton)
@@ -289,7 +203,6 @@ function MenuState:draw()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- Keep keyboard shortcuts as a backup/convenience
 function MenuState:keypressed(key)
     local PlayState = require("src.states.play")
     if key == 'n' then Gamestate.switch(PlayState, "SINGLE")
