@@ -18,9 +18,9 @@ return {
     ROTATION_SPEED = 4,
     LINEAR_DAMPING = 2.5,
     
-    -- World
-    WORLD_WIDTH = 5000,
-    WORLD_HEIGHT = 5000,
+    -- Infinite Universe Config
+    SECTOR_SIZE = 10000, -- The width/height of one "Sector" before coordinates wrap
+    -- WORLD_WIDTH/HEIGHT removed because the world is now infinite
 
     -- Camera
     CAMERA_MIN_ZOOM = 0.5,

@@ -57,9 +57,14 @@ function MenuState:enter()
 
     -- Initialize Starfield if not present
     if not self.stars then
-        self.stars = Utils.generate_starfield()
         local sw, sh = love.graphics.getDimensions()
+        self.stars = Utils.generate_starfield({
+            width = sw,
+            height = sh,
+            scale_density = true
+        })
         self.starfieldBounds = {w = sw, h = sh}
+        self.starMesh = Utils.build_star_mesh(self.stars)
     end
 
     -- Fonts
@@ -112,8 +117,13 @@ function MenuState:update(dt)
 
     -- Regenerate starfield if window size has changed significantly
     if not self.starfieldBounds or self.starfieldBounds.w ~= sw or self.starfieldBounds.h ~= sh then
-        self.stars = Utils.generate_starfield()
+        self.stars = Utils.generate_starfield({
+            width = sw,
+            height = sh,
+            scale_density = true
+        })
         self.starfieldBounds = {w = sw, h = sh}
+        self.starMesh = Utils.build_star_mesh(self.stars)
     end
 
     -- 1. Update Starfield (subtle parallax drift)
@@ -202,7 +212,8 @@ function MenuState:draw()
     love.graphics.clear(bg[1], bg[2], bg[3], bg[4] or 1)
 
     -- 2. Draw Stars with subtle glows and color variance
-    for _, star in ipairs(self.stars) do
+    local vertices = {}
+    for i, star in ipairs(self.stars) do
         local x = math.floor(star.x) + 0.5
         local y = math.floor(star.y) + 0.5
 
@@ -211,9 +222,16 @@ function MenuState:draw()
             love.graphics.circle("fill", x, y, star.glow_radius)
         end
 
-        love.graphics.setColor(star.color[1], star.color[2], star.color[3], star.alpha)
-        love.graphics.setPointSize(star.size)
-        love.graphics.points(x, y)
+        local r, g, b = star.color[1], star.color[2], star.color[3]
+        local a = star.alpha or 1
+        vertices[i] = {x, y, r, g, b, a}
+    end
+
+    if self.starMesh and #vertices > 0 then
+        self.starMesh:setVertices(vertices)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.setPointSize(1.5)
+        love.graphics.draw(self.starMesh)
     end
 
     -- 3. Draw Title "NOVUS"

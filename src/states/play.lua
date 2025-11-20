@@ -22,16 +22,25 @@ function PlayState:enter(prev, role)
     -- Initialize World
     self.world = Concord.world()
     
-    -- Shared Context
-    self.world.starfield = Utils.generate_starfield()
+    -- Shared Context (Camera & Starfield)
+    local sw, sh = love.graphics.getDimensions()
+    self.world.starfield = Utils.generate_starfield({
+        width = sw,
+        height = sh,
+        scale_density = true
+    })
+    self.world.star_mesh = Utils.build_star_mesh(self.world.starfield)
     self.world.camera = Camera.new()
+    
     if self.world.camera then
         self.world.camera:zoomTo(Config.CAMERA_DEFAULT_ZOOM)
     end
     
+    -- Initialize Physics
     if self.world.physics_world then self.world.physics_world:destroy() end
     self.world.physics_world = love.physics.newWorld(0, 0, true)
 
+    -- Initialize Controls
     self.world.controls = baton.new({
         controls = {
             left = {"key:left", "key:a"},
@@ -52,24 +61,36 @@ function PlayState:enter(prev, role)
     -- Initialize Network Role
     self.world:getSystem(Network.IO):setRole(self.role)
 
-    -- Create Player Entity
-    local sx, sy = 2500, 2500
+    -- === ENTITY SETUP ===
+
+    -- 1. Create the SHIP Entity (The Vehicle)
+    -- We now spawn at 0,0 which is the CENTER of Sector [0,0]
+    local sx, sy = 0, 0
     if self.world.camera then self.world.camera:lookAt(sx, sy) end
     
     local body = love.physics.newBody(self.world.physics_world, sx, sy, "dynamic")
     body:setLinearDamping(Config.LINEAR_DAMPING)
+    
     local shape = love.physics.newCircleShape(10)
     local fixture = love.physics.newFixture(body, shape, 1)
     fixture:setRestitution(0.2)
     
-    -- Green for Host/Single, Blue for Client
-    local color = (self.role == "CLIENT" and {0.2, 0.2, 1} or {0.2, 1, 0.2})
+    -- Color logic: Green for Host/Single, Blue for Client
+    local ship_color = (self.role == "CLIENT" and {0.2, 0.2, 1} or {0.2, 1, 0.2})
 
+    local ship = Concord.entity(self.world)
+    ship:give("transform", sx, sy, 0)
+    ship:give("sector", 0, 0) -- [NEW] Required for Infinite Universe System
+    ship:give("physics", body, shape, fixture)
+    ship:give("render", ship_color)
+    ship:give("vehicle", Config.THRUST, Config.ROTATION_SPEED, Config.MAX_SPEED)
+
+    -- 2. Create the PLAYER Entity (The Pilot)
+    -- This entity handles input and 'controls' the ship.
     local player = Concord.entity(self.world)
-    player:give("transform", sx, sy, 0)
-    player:give("physics", body, shape, fixture)
-    player:give("input")
-    player:give("render", color)
+    player:give("pilot")             -- Tag as a pilot
+    player:give("input")             -- Capability to accept input
+    player:give("controlling", ship) -- Link: This pilot controls that ship
 end
 
 function PlayState:update(dt) 
@@ -86,7 +107,7 @@ function PlayState:draw()
     if self.role == "SINGLE" then
         status_text = status_text .. " (Press 'H' to Host)"
     end
-    love.graphics.print(status_text, 10, 30)
+    love.graphics.print(status_text, 10, 70) -- Moved down slightly to avoid overlapping sector debug text
 end
 
 function PlayState:keypressed(key)
@@ -94,9 +115,6 @@ function PlayState:keypressed(key)
     if key == 'h' and self.role == "SINGLE" then
         self.role = "HOST"
         self.world:getSystem(Network.IO):setRole("HOST")
-        
-        -- Visual feedback (Change color to Host Green if it wasn't already?) 
-        -- It is already green for SINGLE, so no change needed visually.
     end
 end
 

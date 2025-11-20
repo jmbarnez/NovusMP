@@ -42,11 +42,11 @@ local function pick_star_color()
     return {fallback[1], fallback[2], fallback[3]}
 end
 
-local function add_stars(starfield, count, layer)
+local function add_stars(starfield, count, width, height, layer)
     for _ = 1, count do
         local star = {
-            x = math.random(0, layer.width),
-            y = math.random(0, layer.height),
+            x = math.random() * width,
+            y = math.random() * height,
             size = random_range(layer.size_min, layer.size_max),
             speed = random_range(layer.speed_min, layer.speed_max),
             alpha = random_range(layer.alpha_min, layer.alpha_max),
@@ -62,15 +62,32 @@ local function add_stars(starfield, count, layer)
     end
 end
 
-function Utils.generate_starfield()
+function Utils.generate_starfield(options)
+    options = options or {}
+
+    local width = options.width or select(1, love.graphics.getDimensions())
+    local height = options.height or select(2, love.graphics.getDimensions())
+    local scale_density = options.scale_density or false
+    local base_area = options.base_area or (1280 * 720)
+    local area = width * height
+
+    local function scaled_count(base_count)
+        if not scale_density then
+            return base_count
+        end
+
+        local scaled = math.floor(base_count * area / base_area + 0.5)
+        if scaled < 1 then
+            return 1
+        end
+        return scaled
+    end
+
     local starfield = {}
-    local screen_w, screen_h = love.graphics.getDimensions()
 
     local layers = {
         {
-            width = screen_w,
-            height = screen_h,
-            count = 600,
+            base_count = 600,
             size_min = 1.0,
             size_max = 1.1,
             speed_min = 0.0005,
@@ -79,9 +96,7 @@ function Utils.generate_starfield()
             alpha_max = 0.45
         },
         {
-            width = screen_w,
-            height = screen_h,
-            count = 220,
+            base_count = 220,
             size_min = 1.1,
             size_max = 1.4,
             speed_min = 0.0012,
@@ -93,9 +108,7 @@ function Utils.generate_starfield()
             glow_max = 2.0
         },
         {
-            width = screen_w,
-            height = screen_h,
-            count = 40,
+            base_count = 40,
             size_min = 1.4,
             size_max = 1.9,
             speed_min = 0.0026,
@@ -109,10 +122,37 @@ function Utils.generate_starfield()
     }
 
     for _, layer in ipairs(layers) do
-        add_stars(starfield, layer.count, layer)
+        local count = scaled_count(layer.base_count)
+        add_stars(starfield, count, width, height, layer)
     end
 
     return starfield
+end
+
+function Utils.build_star_mesh(stars)
+    if not stars or #stars == 0 then
+        return nil
+    end
+
+    local format = {
+        {"VertexPosition", "float", 2},
+        {"VertexColor", "float", 4},
+    }
+
+    local vertices = {}
+    for i, star in ipairs(stars) do
+        local x = math.floor(star.x) + 0.5
+        local y = math.floor(star.y) + 0.5
+
+        local color = star.color or {1, 1, 1}
+        local r, g, b = color[1], color[2], color[3]
+        local a = star.alpha or 1
+
+        vertices[i] = {x, y, r, g, b, a}
+    end
+
+    local mesh = love.graphics.newMesh(format, vertices, "points", "dynamic")
+    return mesh
 end
 
 return Utils
