@@ -206,6 +206,7 @@ end
 function MenuState:keypressed(key)
     local PlayState = require("src.states.play")
     if key == 'n' then Gamestate.switch(PlayState, "SINGLE")
+    elseif key == 'h' then Gamestate.switch(PlayState, "HOST")
     elseif key == 'j' then Gamestate.switch(PlayState, "CLIENT") 
     elseif key == 'escape' then love.event.quit() end
 end

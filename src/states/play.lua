@@ -128,4 +128,34 @@ function PlayState:draw()
     love.graphics.print("Mode: " .. self.role, 10, 70)
 end
 
+-- Promote an existing single-player session into a hosted session so others can join.
+function PlayState:enableHosting()
+    if self.role == "HOST" then return true end
+    if not Config.NETWORK_AVAILABLE then
+        print("Hosting unavailable: ENet library not present.")
+        return false
+    end
+
+    self.role = "HOST"
+
+    -- Update all role-aware systems so they behave as a host from now on.
+    local networkSystem = self.world:getSystem(Network.IO)
+    if networkSystem then networkSystem:setRole("HOST") end
+
+    local physicsSystem = self.world:getSystem(PhysicsSystem)
+    if physicsSystem then physicsSystem:setRole("HOST") end
+
+    local inputSystem = self.world:getSystem(InputSystem)
+    if inputSystem then inputSystem:setRole("HOST") end
+
+    print("Hosting enabled: other players can now connect.")
+    return true
+end
+
+function PlayState:keypressed(key)
+    if key == "h" and self.role == "SINGLE" then
+        self:enableHosting()
+    end
+end
+
 return PlayState

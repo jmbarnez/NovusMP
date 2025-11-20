@@ -20,8 +20,10 @@ function RenderSystem:draw()
     for _, e in ipairs(self.cameraPool) do
         if e.controlling and e.controlling.entity then
             target_entity = e.controlling.entity
+            break
         elseif e.transform then
             target_entity = e
+            break
         end
     end
 
@@ -39,7 +41,7 @@ function RenderSystem:draw()
 
     -- 2. Draw Background (Nebula + Stars)
     love.graphics.push()
-    love.graphics.origin() -- Reset transforms for background
+    love.graphics.origin()
     if world.background then
         world.background:draw(cam_x, cam_y, cam_sector_x, cam_sector_y)
     end
@@ -48,10 +50,12 @@ function RenderSystem:draw()
     -- 3. Draw World Content
     local function draw_world_content()
         -- Draw visual boundaries of the CURRENT sector (Debug Visual)
-        love.graphics.setColor(0.1, 0.1, 0.1)
+        love.graphics.setColor(0.1, 0.1, 0.1, 1)
+        love.graphics.setLineWidth(1)
         love.graphics.rectangle("line", -Config.SECTOR_SIZE/2, -Config.SECTOR_SIZE/2, Config.SECTOR_SIZE, Config.SECTOR_SIZE)
         
-        -- Draw text at the sector boundary to help you find it
+        -- Draw text at the sector boundary
+        love.graphics.setColor(0.3, 0.3, 0.3, 1)
         love.graphics.print("SECTOR EDGE >", Config.SECTOR_SIZE/2 - 100, 0)
 
         for _, e in ipairs(self.drawPool) do
@@ -59,6 +63,10 @@ function RenderSystem:draw()
             local s = e.sector
             local r = e.render
             
+            if not (t and s and r and t.x and t.y and s.x and s.y) then
+                goto continue
+            end
+
             -- Calculate Sector Difference
             local diff_x = s.x - cam_sector_x
             local diff_y = s.y - cam_sector_y
@@ -72,28 +80,38 @@ function RenderSystem:draw()
 
                 love.graphics.push()
                 love.graphics.translate(relative_x, relative_y)
-                love.graphics.rotate(t.r)
+                love.graphics.rotate(t.r or 0)
                 
-                love.graphics.setColor(r.color)
+                love.graphics.setColor(r.color[1] or 1, r.color[2] or 1, r.color[3] or 1, r.color[4] or 1)
                 love.graphics.polygon("line", 15, 0, -10, -10, -5, 0, -10, 10)
                 
                 love.graphics.pop()
             end
+
+            ::continue::
         end
     end
 
     -- 4. Execute World Draw
     if camera then
         camera:draw(draw_world_content)
+    else
+        draw_world_content()
     end
 
     -- 5. Draw HUD
     love.graphics.origin()
-    love.graphics.setColor(1, 1, 1)
+    love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("FPS: " .. love.timer.getFPS(), 10, 10)
     
-    love.graphics.print("Sector: [" .. cam_sector_x .. ", " .. cam_sector_y .. "]", 10, 30)
-    love.graphics.print("Local Pos: " .. math.floor(cam_x) .. ", " .. math.floor(cam_y), 10, 50)
+    -- Safely handle nil values for camera position
+    local sector_x_display = cam_sector_x or "N/A"
+    local sector_y_display = cam_sector_y or "N/A"
+    local pos_x_display = cam_x and math.floor(cam_x) or "N/A"
+    local pos_y_display = cam_y and math.floor(cam_y) or "N/A"
+    
+    love.graphics.print("Sector: [" .. sector_x_display .. ", " .. sector_y_display .. "]", 10, 30)
+    love.graphics.print("Local Pos: " .. pos_x_display .. ", " .. pos_y_display, 10, 50)
 end
 
 return RenderSystem
