@@ -1,20 +1,19 @@
 -- src/game.lua
 -- This is now just the entry point that registers events and starts the Menu.
 
-local Gamestate = require "hump.gamestate"
-local Config    = require "src.config"
-local MenuState = require "src.states.menu"
-local Chat      = require "src.ui.chat"
-local Lurker    = require "lurker"
-
-if not Config.NETWORK_AVAILABLE then
-    print("WARNING: library 'enet' not found. Networking disabled.")
-end
+local Gamestate     = require "hump.gamestate"
+local Config        = require "src.config"
+local MenuState     = require "src.states.menu"
+local Chat          = require "src.hud.chat"
+local Lurker        = require "lurker"
+local WeaponManager = require "src.managers.weapon_manager"
 
 function love.load()
     -- Initialize Chat
     Chat.init()
     Chat.system("System initialized.")
+
+    WeaponManager.load_plugins()
     
     -- Start game in Menu
     Gamestate.switch(MenuState)

@@ -1,6 +1,5 @@
 local Concord = require "concord"
 local Config  = require "src.config"
-local Network = require "src.systems.network"
 
 local Asteroids = {}
 
@@ -20,16 +19,9 @@ local function spawn_single(world, sector_x, sector_y, x, y, radius, color)
     asteroid:give("physics", body, shape, fixture)
     local c = color or {0.6, 0.6, 0.6, 1}
     asteroid:give("render", { render_type = "asteroid", color = c, radius = radius })
+    local hp_max = math.floor((radius or 30) * 1.5)
+    asteroid:give("hp", hp_max)
     asteroid:give("asteroid")
-
-    world.next_asteroid_id = (world.next_asteroid_id or 0) + 1
-    local nid = "AST_" .. tostring(world.next_asteroid_id)
-    asteroid:give("network_identity", nid)
-
-    local net = world:getSystem(Network.IO)
-    if net and net.entity_map then
-        net.entity_map[nid] = asteroid
-    end
 
     fixture:setUserData(asteroid)
 

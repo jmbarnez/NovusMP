@@ -27,7 +27,24 @@ function PhysicsSystem:handleBeginContact(fixtureA, fixtureB, contact)
 
     if not entityA or not entityB then return end
 
+    if (entityA.projectile and entityA.projectile.owner == entityB)
+        or (entityB.projectile and entityB.projectile.owner == entityA) then
+        return
+    end
+
     world:emit("collision", entityA, entityB, contact)
+end
+
+function PhysicsSystem:handlePreSolve(fixtureA, fixtureB, contact)
+    local entityA = fixtureA and fixtureA:getUserData() or nil
+    local entityB = fixtureB and fixtureB:getUserData() or nil
+
+    if not entityA or not entityB then return end
+
+    if (entityA.projectile and entityA.projectile.owner == entityB)
+        or (entityB.projectile and entityB.projectile.owner == entityA) then
+        contact:setEnabled(false)
+    end
 end
 
 function PhysicsSystem:update(dt)
@@ -40,9 +57,15 @@ function PhysicsSystem:update(dt)
     if not world.physics_world then return end
 
     if not self.callbacks_registered then
-        world.physics_world:setCallbacks(function(fixtureA, fixtureB, contact)
-            self:handleBeginContact(fixtureA, fixtureB, contact)
-        end)
+        world.physics_world:setCallbacks(
+            function(fixtureA, fixtureB, contact)
+                self:handleBeginContact(fixtureA, fixtureB, contact)
+            end,
+            nil,
+            function(fixtureA, fixtureB, contact)
+                self:handlePreSolve(fixtureA, fixtureB, contact)
+            end
+        )
         self.callbacks_registered = true
     end
     
@@ -62,14 +85,22 @@ function PhysicsSystem:update(dt)
         local s = e.sector
         local body = p.body
 
-        if body then
-            if self.role == "CLIENT" and e:has("network_sync") and not e:has("pilot") then
-                body:setPosition(t.x, t.y)
-                body:setAngle(t.r or 0)
-                goto continue_entity
+        local hp = e.hp
+        if hp and hp.current and hp.current <= 0 then
+            if p.fixture then
+                p.fixture:setUserData(nil)
             end
+            if body then
+                body:destroy()
+            end
+            e:destroy()
+            goto continue_entity
+        end
+
+        if body then
 
             local x, y = body:getPosition()
+
             local r = body:getAngle()
             local sector_changed = false
 

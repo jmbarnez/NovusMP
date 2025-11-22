@@ -29,14 +29,44 @@ function InputSystem:update(dt)
         for _, e in ipairs(self.controllers) do
             if e:has("pilot") then -- Assuming 'pilot' tag marks the local user's avatar
                 local input = e.input
-                
-                -- Calculate Turn State (-1, 0, 1)
-                local right = world.controls:get("right") or 0
-                local left = world.controls:get("left") or 0
-                input.turn = right - left
-                
-                -- Calculate Thrust State (boolean)
-                input.thrust = world.controls:down("thrust")
+
+                local move_left  = world.controls:down("move_left") and 1 or 0
+                local move_right = world.controls:down("move_right") and 1 or 0
+                local move_up    = world.controls:down("move_up") and 1 or 0
+                local move_down  = world.controls:down("move_down") and 1 or 0
+
+                local move_x = move_right - move_left
+                local move_y = move_down - move_up
+
+                input.move_x = move_x
+                input.move_y = move_y
+
+                input.thrust = move_up == 1
+                input.turn = 0
+                input.fire = world.controls:down("fire")
+
+                local ship = e.controlling and e.controlling.entity or nil
+                if ship and ship.transform and ship.physics and ship.physics.body then
+                    local sx, sy = ship.transform.x, ship.transform.y
+
+                    local mx, my = love.mouse.getPosition()
+                    local wx, wy = mx, my
+                    if world.camera and world.camera.worldCoords then
+                        wx, wy = world.camera:worldCoords(mx, my)
+                    end
+
+                    local dx = wx - sx
+                    local dy = wy - sy
+                    if dx ~= 0 or dy ~= 0 then
+                        local desired
+                        if math.atan2 then
+                            desired = math.atan2(dy, dx)
+                        else
+                            desired = math.atan(dy, dx)
+                        end
+                        input.target_angle = desired
+                    end
+                end
             end
         end
     end
@@ -58,18 +88,46 @@ function InputSystem:update(dt)
                 local stats = ship.vehicle
                 local trans = ship.transform
 
+                local current_angle = body:getAngle()
+
                 -- A. Handle Rotation
-                if input.turn ~= 0 then
-                    local current_angle = body:getAngle()
+                if input.target_angle then
+                    local desired = input.target_angle
+                    local diff = desired - current_angle
+                    while diff < -math.pi do diff = diff + math.pi * 2 end
+                    while diff >  math.pi do diff = diff - math.pi * 2 end
+
+                    local max_step = stats.turn_speed * dt
+                    if diff > max_step then
+                        diff = max_step
+                    elseif diff < -max_step then
+                        diff = -max_step
+                    end
+
+                    current_angle = current_angle + diff
+                    body:setAngle(current_angle)
+                elseif input.turn ~= 0 then
                     current_angle = current_angle + input.turn * stats.turn_speed * dt
                     body:setAngle(current_angle)
                 end
 
-                -- B. Handle Thrust
-                if input.thrust then
+                -- B. Handle Thrust / Movement
+                local fx, fy = 0, 0
+                if input.move_x and input.move_y and (input.move_x ~= 0 or input.move_y ~= 0) then
+                    local len = math.sqrt(input.move_x * input.move_x + input.move_y * input.move_y)
+                    if len > 0 then
+                        local nx = input.move_x / len
+                        local ny = input.move_y / len
+                        fx = nx * stats.thrust
+                        fy = ny * stats.thrust
+                    end
+                elseif input.thrust then
                     local angle = body:getAngle()
-                    local fx = math.cos(angle) * stats.thrust
-                    local fy = math.sin(angle) * stats.thrust
+                    fx = math.cos(angle) * stats.thrust
+                    fy = math.sin(angle) * stats.thrust
+                end
+
+                if fx ~= 0 or fy ~= 0 then
                     body:applyForce(fx, fy)
                 end
 

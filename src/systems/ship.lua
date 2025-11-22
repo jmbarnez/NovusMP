@@ -1,11 +1,10 @@
 local Concord = require "concord"
 local Ships = require "src.data.ships"
-local Network = require "src.systems.network"
 local Config = require "src.config"
 
 local ShipManager = {}
 
-function ShipManager.spawn(world, ship_type_key, id, x, y, is_host_player)
+function ShipManager.spawn(world, ship_type_key, x, y, is_host_player)
     local data = Ships[ship_type_key]
     if not data then
         error("Unknown ship type: " .. tostring(ship_type_key))
@@ -29,7 +28,6 @@ function ShipManager.spawn(world, ship_type_key, id, x, y, is_host_player)
     ship:give("vehicle", data.thrust, data.rotation_speed, data.max_speed)
     ship:give("hull", data.max_hull)
     ship:give("shield", data.max_shield, data.shield_regen)
-    ship:give("network_identity", id)
     fixture:setUserData(ship)
 
     -- Render component now stores the type and color
@@ -43,11 +41,8 @@ function ShipManager.spawn(world, ship_type_key, id, x, y, is_host_player)
 
     -- Input component
     ship:give("input")
-
-    -- Network Map
-    if world:getSystem(Network.IO) then
-        world:getSystem(Network.IO).entity_map[id] = ship
-    end
+    ship:give("weapon", "pulse_laser")
+    ship:give("level")
 
     return ship
 end

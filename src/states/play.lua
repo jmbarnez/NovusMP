@@ -1,174 +1,259 @@
-local Gamestate  = require "hump.gamestate"
-local baton      = require "baton"
-local Camera     = require "hump.camera"
-local Concord    = require "concord"
-local Config     = require "src.config"
-local Background = require "src.background"
-local Chat       = require "src.ui.chat"
-local HUD        = require "src.ui.hud"
+local Gamestate        = require "hump.gamestate"
+local baton            = require "baton"
+local Camera           = require "hump.camera"
+local Concord          = require "concord"
+local Config           = require "src.config"
+local Background       = require "src.background"
+local Chat             = require "src.hud.chat"
+local HUD              = require "src.hud.hud"
+local SaveManager      = require "src.managers.save_manager"
 
 require "src.components"
 
-local InputSystem   = require "src.systems.input"
-local PhysicsSystem = require "src.systems.physics"
-local Network       = require "src.systems.network"
-local RenderSystem  = require "src.systems.render"
-local ShipSystem    = require "src.systems.ship"
-local Asteroids     = require "src.systems.asteroid"
+local InputSystem      = require "src.systems.input"
+local MinimapSystem    = require "src.systems.minimap"
+local PhysicsSystem    = require "src.systems.physics"
+local RenderSystem     = require "src.systems.render"
+local ShipSystem       = require "src.systems.ship"
+local Asteroids        = require "src.systems.asteroid"
+local WeaponSystem     = require "src.systems.weapon"
+local ProjectileSystem = require "src.systems.projectile"
 
-local PlayState     = {}
+local PlayState        = {}
 
-function PlayState:enter(prev, role)
-    self.role = role or "SINGLE"
+local function setSystemRoles(world)
+    local role_str = "SINGLE"
+
+    local sys_phys = world:getSystem(PhysicsSystem)
+    if sys_phys and sys_phys.setRole then
+        sys_phys:setRole(role_str)
+    end
+
+    local sys_input = world:getSystem(InputSystem)
+    if sys_input and sys_input.setRole then
+        sys_input:setRole(role_str)
+    end
+
+    local sys_weapon = world:getSystem(WeaponSystem)
+    if sys_weapon and sys_weapon.setRole then
+        sys_weapon:setRole(role_str)
+    end
+
+    local sys_proj = world:getSystem(ProjectileSystem)
+    if sys_proj and sys_proj.setRole then
+        sys_proj:setRole(role_str)
+    end
+end
+
+local function setupChat(world)
+    if not Chat.isEnabled() then
+        return
+    end
+
+    Chat.setSendHandler(function(message)
+        Chat.addMessage("You: " .. message, "text")
+    end)
+end
+
+local function createLocalPlayer(world)
+    local player = Concord.entity(world)
+    player:give("wallet", 1000)
+    player:give("skills")
+    player:give("level")
+    player:give("input")
+    player:give("pilot")
+    return player
+end
+
+local function linkPlayerToShip(player, ship)
+    if not (player and ship and ship.input) then
+        return
+    end
+    player:give("controlling", ship)
+    player.input = ship.input
+end
+
+local function registerSpawnHandlers(self)
+    self.world:on("collision", function(entityA, entityB, contact)
+        local a = entityA
+        local b = entityB
+
+        local projectile
+        local target
+
+        if a and a.projectile and b and b.asteroid then
+            projectile = a
+            target = b
+        elseif b and b.projectile and a and a.asteroid then
+            projectile = b
+            target = a
+        else
+            return
+        end
+
+        if not (projectile and projectile.projectile and target and target.hp) then
+            return
+        end
+
+        local projComp = projectile.projectile
+        local hp = target.hp
+
+        if projComp.lifetime and projComp.lifetime <= 0 then
+            return
+        end
+
+        local damage = projComp.damage or 0
+        if damage <= 0 then
+            projComp.lifetime = 0
+            return
+        end
+
+        local current = hp.current or hp.max or 0
+        current = current - damage
+        if current < 0 then
+            current = 0
+        end
+        hp.current = current
+
+        if love and love.timer and love.timer.getTime then
+            hp.last_hit_time = love.timer.getTime()
+        end
+
+        projComp.lifetime = 0
+    end)
+end
+
+function PlayState:enter(prev, param)
+    self.role = "SINGLE"
+
+    local loadParams
+    if type(param) == "table" then
+        loadParams = param
+    end
+
+    local snapshot
+    if loadParams and loadParams.mode == "load" then
+        local slot = loadParams.slot or 1
+        local loaded, err = SaveManager.load(slot)
+        if loaded then
+            snapshot = loaded
+        elseif err then
+            print("PlayState: failed to load save slot " .. tostring(slot) .. ": " .. tostring(err))
+        end
+    end
+
     self.world = Concord.world()
     self.world.background = Background.new()
 
     Chat.enable()
     Chat.system("Entered game as " .. self.role)
 
-    -- Camera setup
+    -- Camera
     self.world.camera = Camera.new()
     self.world.camera:zoomTo(Config.CAMERA_DEFAULT_ZOOM)
 
-    -- Physics World (Only used by Host, but initialized always for safety)
+    -- Physics (always present; role decides authority)
     self.world.physics_world = love.physics.newWorld(0, 0, true)
 
-    -- Controls (Local Hardware)
+    -- Local controls
     self.world.controls = baton.new({
         controls = {
-            left = { "key:left", "key:a" },
-            right = { "key:right", "key:d" },
-            thrust = { "key:up", "key:w" }
+            move_left  = { "key:a", "key:left" },
+            move_right = { "key:d", "key:right" },
+            move_up    = { "key:w", "key:up" },
+            move_down  = { "key:s", "key:down" },
+            fire       = { "mouse:1", "key:space" }
         }
     })
 
-    -- Add Systems
+    -- Systems
     self.world:addSystems(
         InputSystem,
         PhysicsSystem,
-        Network.Sync,
-        Network.IO,
-        RenderSystem
+        WeaponSystem,
+        ProjectileSystem,
+        RenderSystem,
+        MinimapSystem
     )
 
-    -- Configure Roles for Systems
-    self.world:getSystem(Network.IO):setRole(self.role)
-    self.world:getSystem(PhysicsSystem):setRole(self.role)
-    self.world:getSystem(InputSystem):setRole(self.role)
+    setSystemRoles(self.world)
+    setupChat(self.world)
 
-    if Chat.isEnabled() then
-        Chat.setSendHandler(function(message)
-            local net = self.world:getSystem(Network.IO)
-            if net and net.sendChat then
-                net:sendChat(message)
-            else
-                Chat.addMessage("You: " .. message, "text")
-            end
-        end)
-    end
+    -- Player meta-entity (local user, not the ship itself)
+    self.player = createLocalPlayer(self.world)
 
-    -- === SPAWNING LOGIC ===
+    local spawn_x = 0
+    local spawn_y = 0
+    local ship_type = "drone"
+    local sector_x
+    local sector_y
 
-    -- Create Local Player (Persistent Data)
-    self.player = Concord.entity(self.world)
-    self.player:give("wallet", 1000) -- Starting credits
-    self.player:give("skills")
-    self.player:give("input")
-    self.player:give("pilot") -- Mark as local player (InputSystem reads baton for this)
-
-    if self.role == "HOST" or self.role == "SINGLE" then
-        -- Host spawns their own ship immediately
-        Config.MY_NETWORK_ID = "HOST_PLAYER"
-        local ship = ShipSystem.spawn(self.world, "drone", Config.MY_NETWORK_ID, 0, 0, true)
-        
-        -- Link Player -> Ship
-        self.player:give("controlling", ship)
-        -- Link Input (so Baton -> Player -> Ship works AND Network -> Ship -> Packet works)
-        self.player.input = ship.input
-
-        -- Listen for client joins to spawn their ships
-        self.world:on("spawn_player", function(id, peer)
-            local s = ShipSystem.spawn(self.world, "drone", id, 100, 0, false)
-            
-            -- Create Remote Player Entity (Logic Controller)
-            local p = Concord.entity(self.world)
-            p:give("controlling", s)
-            p:give("input")
-            
-            -- Link inputs so Network Update (on Ship) -> Physics (via Player) works
-            p.input = s.input
-        end)
-
-        Asteroids.spawnField(self.world, 0, 0, Config.UNIVERSE_SEED, 40)
-    elseif self.role == "CLIENT" then
-        -- Clients spawn NOTHING initially.
-        -- They wait for "WELCOME" to set ID, and "SNAP" to create the entity.
-    end
-
-    self.world:on("collision", function(entityA, entityB, contact)
-        print("Bonk!", entityA, entityB)
-    end)
-
-    self.world:on("client_ship_spawned", function(ship, is_me)
-        if is_me then
-            Chat.system("Your ship has been delivered.")
-            self.player:give("controlling", ship)
-            self.player.input = ship.input
+    if snapshot and snapshot.player and snapshot.player.ship then
+        local s = snapshot.player.ship
+        if s.transform then
+            if s.transform.x then spawn_x = s.transform.x end
+            if s.transform.y then spawn_y = s.transform.y end
         end
-    end)
+        if s.sector then
+            sector_x = s.sector.x
+            sector_y = s.sector.y
+        end
+        if s.ship_type then
+            ship_type = s.ship_type
+        end
+    end
+
+    local ship = ShipSystem.spawn(self.world, ship_type, spawn_x, spawn_y, true)
+
+    if sector_x and ship.sector then
+        ship.sector.x = sector_x
+        ship.sector.y = sector_y
+    end
+
+    linkPlayerToShip(self.player, ship)
+
+    if snapshot then
+        SaveManager.apply_snapshot(self.world, self.player, ship, snapshot)
+    end
+
+    registerSpawnHandlers(self)
+
+    -- Asteroid field around origin; seed comes from NewGame
+    if Config.UNIVERSE_SEED then
+        Asteroids.spawnField(self.world, 0, 0, Config.UNIVERSE_SEED, 40)
+    end
 end
 
 function PlayState:update(dt)
-    if self.world.background then self.world.background:update(dt) end
-
-    if self.role == "CLIENT" then
-        local net = self.world:getSystem(Network.IO)
-        if net and net:getConnectionState() == "failed" then
-            Gamestate.switch(require "src.states.menu")
-            return
-        end
+    if self.world.background then
+        self.world.background:update(dt)
     end
 
     self.world:emit("update", dt)
 end
 
 function PlayState:draw()
-    love.graphics.setBackgroundColor(0, 0, 0)
+    love.graphics.setBackgroundColor(0.03, 0.05, 0.16)
     self.world:emit("draw")
 
-    -- HUD
     love.graphics.origin()
-    HUD.draw(self.world)
-end
-
--- Promote an existing single-player session into a hosted session so others can join.
-function PlayState:enableHosting()
-    if self.role == "HOST" then return true end
-    if not Config.NETWORK_AVAILABLE then
-        print("Hosting unavailable: ENet library not present.")
-        return false
-    end
-
-    self.role = "HOST"
-
-    -- Update all role-aware systems so they behave as a host from now on.
-    local networkSystem = self.world:getSystem(Network.IO)
-    if networkSystem then networkSystem:setRole("HOST") end
-
-    local physicsSystem = self.world:getSystem(PhysicsSystem)
-    if physicsSystem then physicsSystem:setRole("HOST") end
-
-    local inputSystem = self.world:getSystem(InputSystem)
-    if inputSystem then inputSystem:setRole("HOST") end
-
-    Chat.system("Mode changed to HOST. Other players can now connect.")
-    print("Hosting enabled: other players can now connect.")
-    return true
+    HUD.draw(self.world, self.player)
 end
 
 function PlayState:keypressed(key)
-    if key == "h" and self.role == "SINGLE" then
-        self:enableHosting()
+    if key == "f5" then
+        SaveManager.save(1, self.world, self.player)
+        if Chat and Chat.system then
+            Chat.system("Game saved.")
+        end
+    elseif key == "f9" then
+        if SaveManager.has_save(1) then
+            Gamestate.switch(PlayState, { mode = "load", slot = 1 })
+        else
+            if Chat and Chat.system then
+                Chat.system("No save file found.")
+            end
+        end
     end
 end
 

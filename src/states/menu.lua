@@ -5,6 +5,7 @@ local Utils     = require "src.utils"
 local Theme     = require "src.ui.theme"
 local Config    = require "src.config"
 local NewGameState = require "src.states.newgame"
+local SaveManager = require "src.managers.save_manager"
 
 -- Simplified Shader just for the Title Text (Aurora Effect on Text)
 local TitleShaderSource = [[
@@ -47,35 +48,6 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords) {
 }
 ]]
 
-local nameAdjectives = {
-    "Silent",
-    "Luminous",
-    "Crimson",
-    "Radiant",
-    "Nebula",
-    "Quantum",
-    "Celestial",
-    "Nova",
-}
-
-local nameNouns = {
-    "Voyager",
-    "Drifter",
-    "Runner",
-    "Phantom",
-    "Ranger",
-    "Pilot",
-    "Warden",
-    "Nomad",
-}
-
-local function generateRandomDisplayName()
-    local adj = nameAdjectives[math.random(#nameAdjectives)]
-    local noun = nameNouns[math.random(#nameNouns)]
-    local number = math.random(10, 99)
-    return adj .. " " .. noun .. " " .. tostring(number)
-end
-
 local function pointInRect(x, y, rect)
     return x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h
 end
@@ -95,14 +67,6 @@ function MenuState:enter()
         self.shaderTime = 0
     end
 
-    self.displayName = Config.PLAYER_NAME or ""
-    if self.displayName == "" then
-        self.displayName = generateRandomDisplayName()
-        Config.PLAYER_NAME = self.displayName
-    end
-
-    self.activeField = nil
-
     self.buttons = {
         {
             label = "NEW GAME",
@@ -111,16 +75,11 @@ function MenuState:enter()
             end,
         },
         {
-            label = "JOIN GAME",
+            label = "LOAD GAME",
             action = function()
-                local JoinState = require("src.states.join")
-                Gamestate.switch(JoinState)
-            end,
-        },
-        {
-            label = "QUIT",
-            action = function()
-                love.event.quit()
+                if SaveManager.has_save(1) then
+                    Gamestate.switch(require("src.states.play"), { mode = "load", slot = 1 })
+                end
             end,
         },
     }
@@ -132,39 +91,12 @@ function MenuState:enter()
 end
 
 function MenuState:update(dt)
-    local sw = love.graphics.getWidth()
-
     if self.titleShader then
         self.shaderTime = self.shaderTime + dt
         self.titleShader:send("time", self.shaderTime)
     end
 
     self:updateButtonLayout()
-
-    local sw2, sh2 = love.graphics.getDimensions()
-    local fieldWidth = 260
-    local fieldHeight = 36
-    local randomWidth = 140
-    local spacingX = 10
-    local centerX = sw2 * 0.5
-    local bottomMargin = 80
-    local y = sh2 - bottomMargin - fieldHeight
-    local totalWidth = fieldWidth + spacingX + randomWidth
-    local startX = centerX - totalWidth * 0.5
-
-    self.displayNameRect = {
-        x = startX,
-        y = y,
-        w = fieldWidth,
-        h = fieldHeight,
-    }
-
-    self.randomNameRect = {
-        x = startX + fieldWidth + spacingX,
-        y = y,
-        w = randomWidth,
-        h = fieldHeight,
-    }
 
     local mouseX, mouseY = love.mouse.getPosition()
 
@@ -179,19 +111,11 @@ function MenuState:update(dt)
     local isDown = love.mouse.isDown(1)
 
     if isDown and not self.mouseWasDown then
-        if self.displayNameRect and pointInRect(mouseX, mouseY, self.displayNameRect) then
-            self.activeField = "display_name"
-        elseif self.randomNameRect and pointInRect(mouseX, mouseY, self.randomNameRect) then
-            self.displayName = generateRandomDisplayName()
-            Config.PLAYER_NAME = self.displayName
-        else
-            self.activeButton = self.hoveredButton
-        end
+        self.activeButton = self.hoveredButton
     elseif not isDown and self.mouseWasDown then
         if self.activeButton ~= nil and self.hoveredButton == self.activeButton then
             local button = self.buttons[self.activeButton]
             if button and button.action then
-                Config.PLAYER_NAME = self.displayName or Config.PLAYER_NAME
                 button.action()
             end
         end
@@ -249,72 +173,6 @@ function MenuState:draw()
     love.graphics.printf("NOVUS", 0, sh * 0.08, sw, "center")
     love.graphics.setShader()
 
-    local labelFont = self.fontButton
-    love.graphics.setFont(labelFont)
-    local shapes = Theme.shapes
-
-    local fieldWidth = 260
-    local fieldHeight = 36
-    local randomWidth = 140
-    local spacingX = 10
-    local centerX = sw * 0.5
-    local bottomMargin = 80
-    local y = sh - bottomMargin - fieldHeight
-    local totalWidth = fieldWidth + spacingX + randomWidth
-    local startX = centerX - totalWidth * 0.5
-
-    self.displayNameRect = {
-        x = startX,
-        y = y,
-        w = fieldWidth,
-        h = fieldHeight,
-    }
-
-    self.randomNameRect = {
-        x = startX + fieldWidth + spacingX,
-        y = y,
-        w = randomWidth,
-        h = fieldHeight,
-    }
-
-    love.graphics.setColor(Theme.colors.textMuted)
-    love.graphics.printf("DISPLAY NAME", self.displayNameRect.x, self.displayNameRect.y - fieldHeight * 0.9, fieldWidth, "left")
-
-    local state = self.activeField == "display_name" and "active" or "default"
-    local fillColor, outlineColor = Theme.getButtonColors(state)
-    love.graphics.setColor(fillColor)
-    love.graphics.rectangle("fill", self.displayNameRect.x, self.displayNameRect.y, self.displayNameRect.w, self.displayNameRect.h, shapes.buttonRounding, shapes.buttonRounding)
-
-    love.graphics.setColor(outlineColor)
-    love.graphics.rectangle("line", self.displayNameRect.x, self.displayNameRect.y, self.displayNameRect.w, self.displayNameRect.h, shapes.buttonRounding, shapes.buttonRounding)
-
-    local textColor = Theme.getButtonTextColor(state)
-    love.graphics.setColor(textColor)
-    local padding = 10
-    local textX = self.displayNameRect.x + padding
-    local textY = self.displayNameRect.y + (fieldHeight - labelFont:getHeight()) * 0.5
-    love.graphics.printf(self.displayName or "", textX, textY, self.displayNameRect.w - padding * 2, "left")
-
-    if self.activeField == "display_name" then
-        local textWidth = labelFont:getWidth(self.displayName or "")
-        local caretX = textX + textWidth + 2
-        local caretY = self.displayNameRect.y + 6
-        love.graphics.rectangle("fill", caretX, caretY, 2, fieldHeight - 12)
-    end
-
-    local randomState = "default"
-    local randomFill, randomOutline = Theme.getButtonColors(randomState)
-    local randomTextColor = Theme.getButtonTextColor(randomState)
-
-    love.graphics.setColor(randomFill)
-    love.graphics.rectangle("fill", self.randomNameRect.x, self.randomNameRect.y, self.randomNameRect.w, self.randomNameRect.h, shapes.buttonRounding, shapes.buttonRounding)
-
-    love.graphics.setColor(randomOutline)
-    love.graphics.rectangle("line", self.randomNameRect.x, self.randomNameRect.y, self.randomNameRect.w, self.randomNameRect.h, shapes.buttonRounding, shapes.buttonRounding)
-
-    love.graphics.setColor(randomTextColor)
-    love.graphics.printf("RANDOM", self.randomNameRect.x, self.randomNameRect.y + (self.randomNameRect.h - labelFont:getHeight()) * 0.5, self.randomNameRect.w, "center")
-
     self:updateButtonLayout()
 
     love.graphics.setFont(self.fontButton)
@@ -324,6 +182,7 @@ function MenuState:draw()
         local rect = self.buttonRects[index]
         if rect then
             local hovered = self.hoveredButton == index
+
             local active = love.mouse.isDown(1) and self.activeButton == index
 
             local stateButton = "default"
@@ -337,10 +196,10 @@ function MenuState:draw()
             local btnTextColor = Theme.getButtonTextColor(stateButton)
 
             love.graphics.setColor(btnFill)
-            love.graphics.rectangle("fill", rect.x, rect.y, rect.w, rect.h, shapes.buttonRounding, shapes.buttonRounding)
+            love.graphics.rectangle("fill", rect.x, rect.y, rect.w, rect.h, Theme.shapes.buttonRounding, Theme.shapes.buttonRounding)
 
             love.graphics.setColor(btnOutline)
-            love.graphics.rectangle("line", rect.x, rect.y, rect.w, rect.h, shapes.buttonRounding, shapes.buttonRounding)
+            love.graphics.rectangle("line", rect.x, rect.y, rect.w, rect.h, Theme.shapes.buttonRounding, Theme.shapes.buttonRounding)
 
             love.graphics.setColor(btnTextColor)
             love.graphics.printf(
@@ -362,23 +221,9 @@ function MenuState:keypressed(key)
         love.event.quit()
         return
     end
-
-    if self.activeField == "display_name" and key == "backspace" then
-        local current = self.displayName or ""
-        self.displayName = current:sub(1, #current - 1)
-        Config.PLAYER_NAME = self.displayName
-        return
-    end
 end
 
 function MenuState:textinput(t)
-    if self.activeField == "display_name" then
-        if t ~= "|" then
-            local current = self.displayName or ""
-            self.displayName = current .. t
-            Config.PLAYER_NAME = self.displayName
-        end
-    end
 end
 
 return MenuState

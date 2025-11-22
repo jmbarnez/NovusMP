@@ -1,6 +1,6 @@
 local Background = {}
 Background.__index = Background
-local Constants = require "src.constants"
+
 local Config = require "src.config"
 
 local STAR_FIELD_RADIUS = 60000
@@ -12,7 +12,7 @@ math.random(); math.random(); math.random()
 function Background.new(enableNebula)
     local self = setmetatable({}, Background)
 
-    local star_size = Constants.BACKGROUND.STAR_SIZE
+    local star_size = Config.BACKGROUND.STAR_SIZE
 
     local star_canvas = love.graphics.newCanvas(star_size, star_size)
     love.graphics.setCanvas(star_canvas)
@@ -22,7 +22,7 @@ function Background.new(enableNebula)
     love.graphics.setCanvas()
 
     self.starTexture = love.graphics.newImage(star_canvas:newImageData())
-    self.starBatch = love.graphics.newSpriteBatch(self.starTexture, Constants.BACKGROUND.STAR_SPRITE_BATCH_SIZE, "static")
+    self.starBatch = love.graphics.newSpriteBatch(self.starTexture, Config.BACKGROUND.STAR_SPRITE_BATCH_SIZE, "static")
 
 
     self.time = 0
@@ -110,19 +110,19 @@ function Background.new(enableNebula)
         return min + math.random() * (max - min)
     end
 
-    local intensityBase = Constants.BACKGROUND.NEBULA.INTENSITY_BASE
-    local intensityRange = Constants.BACKGROUND.NEBULA.INTENSITY_RANGE
+    local intensityBase = Config.BACKGROUND.NEBULA.INTENSITY_BASE
+    local intensityRange = Config.BACKGROUND.NEBULA.INTENSITY_RANGE
 
     -- Random base offset for a single nebula
     self.nebulaParams.offsetBase = { math.random() * 10000, math.random() * 10000 }
 
-    local noiseBase = Constants.BACKGROUND.NEBULA.NOISE_SCALE_BASE
-    local noiseRange = Constants.BACKGROUND.NEBULA.NOISE_SCALE_RANGE
+    local noiseBase = Config.BACKGROUND.NEBULA.NOISE_SCALE_BASE
+    local noiseRange = Config.BACKGROUND.NEBULA.NOISE_SCALE_RANGE
     self.nebulaParams.noiseScale = noiseBase + math.random() * noiseRange
 
     local flowAngle = math.random() * math.pi * 2
 
-    local flowSpeed = Constants.BACKGROUND.NEBULA.FLOW_SPEED_BASE + math.random() * Constants.BACKGROUND.NEBULA.FLOW_SPEED_RANGE
+    local flowSpeed = Config.BACKGROUND.NEBULA.FLOW_SPEED_BASE + math.random() * Config.BACKGROUND.NEBULA.FLOW_SPEED_RANGE
     self.nebulaParams.flow = {
         math.cos(flowAngle) * flowSpeed,
         math.sin(flowAngle) * flowSpeed
@@ -130,7 +130,7 @@ function Background.new(enableNebula)
 
     local intensityA = intensityBase + math.random() * intensityRange
     local intensityB = intensityBase + math.random() * intensityRange
-    local hueShift = math.random() * Constants.BACKGROUND.NEBULA.HUE_SHIFT_RANGE
+    local hueShift = math.random() * Config.BACKGROUND.NEBULA.HUE_SHIFT_RANGE
 
     self.nebulaParams.colorA = {
         randomColorComponent(0.15, 0.75) * intensityA,
@@ -144,8 +144,8 @@ function Background.new(enableNebula)
         randomColorComponent(0.15, 0.7) * intensityB
     }
 
-    local alphaBase = Constants.BACKGROUND.NEBULA.ALPHA_SCALE_BASE
-    local alphaRange = Constants.BACKGROUND.NEBULA.ALPHA_SCALE_RANGE
+    local alphaBase = Config.BACKGROUND.NEBULA.ALPHA_SCALE_BASE
+    local alphaRange = Config.BACKGROUND.NEBULA.ALPHA_SCALE_RANGE
     self.nebulaParams.alphaScale = alphaBase + math.random() * alphaRange
 
     -- Single-layer parallax factor
@@ -169,10 +169,10 @@ function Background:generateStars(w, h)
     self.screenWidth = sw
     self.screenHeight = sh
 
-    local star_colors = Constants.BACKGROUND.STAR_COLORS
-    local color_weights = Constants.BACKGROUND.STAR_COLOR_WEIGHTS
+    local star_colors = Config.BACKGROUND.STAR_COLORS
+    local color_weights = Config.BACKGROUND.STAR_COLOR_WEIGHTS
 
-    local count = Constants.BACKGROUND.STAR_COUNT
+    local count = Config.BACKGROUND.STAR_COUNT
 
     for i = 1, count do
         local brightness = math.random()
@@ -191,7 +191,7 @@ function Background:generateStars(w, h)
 
         local layer_roll = math.random()
         local layer
-        local thresholds = Constants.BACKGROUND.LAYER_THRESHOLDS
+        local thresholds = Config.BACKGROUND.LAYER_THRESHOLDS
         if layer_roll < thresholds.NEAR then
             layer = 3
         elseif layer_roll < thresholds.MID then
@@ -204,15 +204,15 @@ function Background:generateStars(w, h)
         local speed
         local base_alpha
 
-        local layer_params = Constants.BACKGROUND.LAYER_PARAMS[layer]
+        local layer_params = Config.BACKGROUND.LAYER_PARAMS[layer]
         if layer_params then
             size = layer_params.SIZE_MIN + size_factor * layer_params.SIZE_FACTOR
             speed = layer_params.SPEED_MIN + size_factor * layer_params.SPEED_FACTOR
             base_alpha = layer_params.ALPHA_MIN + size_factor * layer_params.ALPHA_FACTOR
         end
 
-        if size < Constants.BACKGROUND.MIN_STAR_SIZE then
-            size = Constants.BACKGROUND.MIN_STAR_SIZE
+        if size < Config.BACKGROUND.MIN_STAR_SIZE then
+            size = Config.BACKGROUND.MIN_STAR_SIZE
         end
 
         local twinkle_speed
@@ -274,7 +274,7 @@ function Background:draw(cam_x, cam_y, cam_sector_x, cam_sector_y)
     local abs_x = (cam_sector_x or 0) * Config.SECTOR_SIZE + (cam_x or 0)
     local abs_y = (cam_sector_y or 0) * Config.SECTOR_SIZE + (cam_y or 0)
 
-    local clear = Constants.BACKGROUND.CLEAR_COLOR
+    local clear = Config.BACKGROUND.CLEAR_COLOR
     love.graphics.setColor(clear[1], clear[2], clear[3], clear[4])
     love.graphics.rectangle("fill", 0, 0, sw, sh)
 

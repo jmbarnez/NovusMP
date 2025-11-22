@@ -23,6 +23,10 @@ end)
 Concord.component("input", function(c)
     c.thrust = false
     c.turn = 0 -- -1 (left), 0 (none), 1 (right)
+    c.fire = false
+    c.move_x = 0
+    c.move_y = 0
+    c.target_angle = nil
 end)
 
 Concord.component("render", function(c, arg)
@@ -32,6 +36,15 @@ Concord.component("render", function(c, arg)
             c.color = arg.color or {1, 1, 1}
             if arg.radius then
                 c.radius = arg.radius
+            end
+            if arg.length then
+                c.length = arg.length
+            end
+            if arg.thickness then
+                c.thickness = arg.thickness
+            end
+            if arg.shape then
+                c.shape = arg.shape
             end
         else
             c.color = arg
@@ -80,18 +93,28 @@ Concord.component("vehicle", function(c, thrust, turn_speed, max_speed)
     c.max_speed = max_speed or 500
 end)
 
--- Networking
-Concord.component("network_identity", function(c, id)
-    c.id = id
-    c.owner_peer_id = nil -- Used by Host to map Entity -> ENet Peer
+Concord.component("weapon", function(c, weapon_name, mounts)
+    c.weapon_name = weapon_name or "pulse_laser"
+    c.cooldown = 0
+    c.mounts = mounts or { { x = 0, y = 0 } }
 end)
 
-Concord.component("network_sync", function(c, tx, ty, tr, tsx, tsy)
-    c.target_x = tx or 0
-    c.target_y = ty or 0
-    c.target_r = tr or 0
-    c.target_sector_x = tsx or 0
-    c.target_sector_y = tsy or 0
+Concord.component("projectile", function(c, damage, lifetime, owner)
+    c.damage = damage or 0
+    c.lifetime = lifetime or 0
+    c.owner = owner
+end)
+
+Concord.component("level", function(c, current, xp, next_level_xp)
+    c.current = current or 1
+    c.xp = xp or 0
+    c.next_level_xp = next_level_xp or 1000
+end)
+
+Concord.component("hp", function(c, max, current)
+    c.max = max or 100
+    c.current = current or c.max
+    c.last_hit_time = nil
 end)
 
 Concord.component("asteroid")

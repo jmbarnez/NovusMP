@@ -14,7 +14,7 @@ end
 
 local RenderSystem = Concord.system({
     drawPool = { "transform", "render", "sector" },
-    cameraPool = { "input" }
+    cameraPool = { "input", "controlling" }
 })
 
 function RenderSystem:draw()
@@ -92,7 +92,9 @@ function RenderSystem:draw()
                 love.graphics.push()
                 love.graphics.translate(relative_x, relative_y)
 
-                if e.name and e.name.value and e.name.value ~= "" then
+                local is_self = (target_entity ~= nil and e == target_entity)
+
+                if (not is_self) and e.name and e.name.value and e.name.value ~= "" then
                     local name = e.name.value
                     if not nameFont then
                         nameFont = love.graphics.newFont(12)
@@ -133,12 +135,7 @@ function RenderSystem:draw()
                         radius = r.radius
                     end
 
-                    local key
-                    if e.network_identity and e.network_identity.id then
-                        key = e.network_identity.id
-                    else
-                        key = tostring(e)
-                    end
+                    local key = tostring(e)
 
                     local poly = asteroidShapes[key]
                     if not poly then
@@ -192,18 +189,68 @@ function RenderSystem:draw()
                     love.graphics.setLineWidth(oldLineWidth)
 
                     love.graphics.setColor(cr, cg, cb, ca)
-                elseif type(r) == "table" and r.type then
-                    -- Ships and other typed renderables
-                    local Ships = require "src.data.ships"
-                    local shipData = Ships[r.type]
 
-                    if shipData and shipData.draw then
-                        shipData.draw(r.color)
+                    if e.hp and e.hp.max and e.hp.current and e.hp.current < e.hp.max and e.hp.last_hit_time then
+                        local now = (love and love.timer and love.timer.getTime) and love.timer.getTime() or nil
+                        if now then
+                            local elapsed = now - (e.hp.last_hit_time or 0)
+                            local visible_duration = 2.0
+                            if elapsed >= 0 and elapsed <= visible_duration then
+                                local pct = 0
+                                if e.hp.max > 0 then
+                                    pct = math.max(0, math.min(1, e.hp.current / e.hp.max))
+                                end
+
+                                local bar_width = (radius or 10) * 2
+                                local bar_height = 4
+                                local y_offset = -(radius or 10) - 10
+
+                                love.graphics.setColor(0, 0, 0, 0.7)
+                                love.graphics.rectangle("fill", -bar_width * 0.5, y_offset, bar_width, bar_height, 2, 2)
+
+                                love.graphics.setColor(1.0, 0.9, 0.25, 1.0)
+                                love.graphics.rectangle("fill", -bar_width * 0.5, y_offset, bar_width * pct, bar_height, 2, 2)
+
+                                love.graphics.setColor(0, 0, 0, 1.0)
+                                love.graphics.rectangle("line", -bar_width * 0.5, y_offset, bar_width, bar_height, 2, 2)
+                            end
+                        end
+                    end
+                elseif type(r) == "table" and r.type then
+                    if r.type == "projectile" then
+                        local color = r.color or { 1, 1, 1, 1 }
+                        local cr = color[1] or 1
+                        local cg = color[2] or 1
+                        local cb = color[3] or 1
+                        local ca = color[4] or 1
+                        love.graphics.setColor(cr, cg, cb, ca)
+
+                        local shape = r.shape or "beam"
+                        if shape == "beam" then
+                            local radius = r.radius or 3
+                            local length = r.length or (radius * 4)
+                            local thickness = r.thickness or (radius * 0.7)
+                            love.graphics.rectangle("fill", -length * 0.5, -thickness * 0.5, length, thickness)
+                        elseif shape == "circle" then
+                            local radius = r.radius or 3
+                            love.graphics.circle("fill", 0, 0, radius)
+                        else
+                            local radius = r.radius or 3
+                            love.graphics.circle("fill", 0, 0, radius)
+                        end
                     else
-                        -- Fallback
-                        local color = r.color or { 1, 1, 1 }
-                        love.graphics.setColor(unpack(color))
-                        love.graphics.circle("fill", 0, 0, 10)
+                        -- Ships and other typed renderables
+                        local Ships = require "src.data.ships"
+                        local shipData = Ships[r.type]
+
+                        if shipData and shipData.draw then
+                            shipData.draw(r.color)
+                        else
+                            -- Fallback
+                            local color = r.color or { 1, 1, 1 }
+                            love.graphics.setColor(unpack(color))
+                            love.graphics.circle("fill", 0, 0, 10)
+                        end
                     end
                 else
                     -- Fallback for simple shapes or old format
@@ -231,6 +278,10 @@ function RenderSystem:draw()
 
                     love.graphics.circle("fill", 0, 0, radius)
                 end
+                
+                -- Debug: Draw a small red dot at the center to ensure it's being drawn at all
+                -- love.graphics.setColor(1, 0, 0, 1)
+                -- love.graphics.circle("fill", 0, 0, 2)
 
                 love.graphics.pop()
             end
