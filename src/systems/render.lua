@@ -1,16 +1,18 @@
 local Concord = require "concord"
 local Config = require "src.config"
 
+local nameFont
+
 local RenderSystem = Concord.system({
-    drawPool = {"transform", "render", "sector"},
-    cameraPool = {"input"} 
+    drawPool = { "transform", "render", "sector" },
+    cameraPool = { "input" }
 })
 
 function RenderSystem:draw()
     local world = self:getWorld()
     local screen_w, screen_h = love.graphics.getDimensions()
     local camera = world.camera
-    
+
     -- 1. Find Camera Focus & Sector
     local cam_x, cam_y = 0, 0
     local cam_sector_x, cam_sector_y = 0, 0
@@ -52,17 +54,18 @@ function RenderSystem:draw()
         -- Draw visual boundaries of the CURRENT sector (Debug Visual)
         love.graphics.setColor(0.1, 0.1, 0.1, 1)
         love.graphics.setLineWidth(1)
-        love.graphics.rectangle("line", -Config.SECTOR_SIZE/2, -Config.SECTOR_SIZE/2, Config.SECTOR_SIZE, Config.SECTOR_SIZE)
-        
+        love.graphics.rectangle("line", -Config.SECTOR_SIZE / 2, -Config.SECTOR_SIZE / 2, Config.SECTOR_SIZE,
+            Config.SECTOR_SIZE)
+
         -- Draw text at the sector boundary
         love.graphics.setColor(0.3, 0.3, 0.3, 1)
-        love.graphics.print("SECTOR EDGE >", Config.SECTOR_SIZE/2 - 100, 0)
+        love.graphics.print("SECTOR EDGE >", Config.SECTOR_SIZE / 2 - 100, 0)
 
         for _, e in ipairs(self.drawPool) do
             local t = e.transform
             local s = e.sector
             local r = e.render
-            
+
             if not (t and s and r and t.x and t.y and s.x and s.y) then
                 goto continue
             end
@@ -73,81 +76,64 @@ function RenderSystem:draw()
 
             -- Optimization: Only draw entities in neighbor sectors
             if math.abs(diff_x) <= 1 and math.abs(diff_y) <= 1 then
-                
                 -- Calculate Relative Position to Camera's Sector
                 local relative_x = t.x + (diff_x * Config.SECTOR_SIZE)
                 local relative_y = t.y + (diff_y * Config.SECTOR_SIZE)
 
                 love.graphics.push()
                 love.graphics.translate(relative_x, relative_y)
+
+                if e.name and e.name.value and e.name.value ~= "" then
+                    local name = e.name.value
+                    if not nameFont then
+                        nameFont = love.graphics.newFont(12)
+                    end
+                    local prevFont = love.graphics.getFont()
+                    love.graphics.setFont(nameFont)
+                    local textWidth = nameFont:getWidth(name)
+                    local textHeight = nameFont:getHeight()
+                    love.graphics.setColor(1, 1, 1, 1)
+                    love.graphics.print(name, -textWidth * 0.5, -(20 + textHeight))
+                    love.graphics.setFont(prevFont)
+                end
+
                 love.graphics.rotate(t.r or 0)
-                
-                love.graphics.setColor(r.color[1] or 1, r.color[2] or 1, r.color[3] or 1, r.color[4] or 1)
-                
-                -- === REALISTIC 2D DRONE SHIP ===
-                
-                -- Main Body / Cockpit (central hexagon)
-                love.graphics.polygon("line", 
-                    8, 0,      -- front point
-                    4, 3,      -- top-right
-                    -2, 3,     -- back-right
-                    -6, 0,     -- back center
-                    -2, -3,    -- back-left
-                    4, -3      -- top-left
-                )
-                
-                -- Inner cockpit detail
-                love.graphics.polygon("line",
-                    4, 0,
-                    1, 2,
-                    -3, 2,
-                    -3, -2,
-                    1, -2
-                )
-                
-                -- Left Wing/Stabilizer
-                love.graphics.polygon("line",
-                    -2, 3,      -- wing root top
-                    -4, 8,      -- wing tip top
-                    -6, 8,      -- wing tip back
-                    -5, 3       -- wing root back
-                )
-                
-                -- Right Wing/Stabilizer
-                love.graphics.polygon("line",
-                    -2, -3,     -- wing root bottom
-                    -4, -8,     -- wing tip bottom
-                    -6, -8,     -- wing tip back
-                    -5, -3      -- wing root back
-                )
-                
-                -- Left Engine Pod
-                love.graphics.rectangle("line", -8, 6, 4, 3)
-                love.graphics.line(-8, 7.5, -4, 7.5) -- engine detail line
-                
-                -- Right Engine Pod
-                love.graphics.rectangle("line", -8, -9, 4, 3)
-                love.graphics.line(-8, -7.5, -4, -7.5) -- engine detail line
-                
-                -- Thruster Exhaust (back of engine pods)
-                love.graphics.setLineWidth(1.5)
-                love.graphics.line(-8, 7, -10, 7)
-                love.graphics.line(-8, 8, -10, 8)
-                love.graphics.line(-8, -7, -10, -7)
-                love.graphics.line(-8, -8, -10, -8)
-                love.graphics.setLineWidth(1)
-                
-                -- Front sensors/weapons
-                love.graphics.line(8, 0, 12, 0)
-                love.graphics.circle("line", 12, 0, 1.5)
-                
-                -- Technical details on wings
-                love.graphics.line(-3.5, 5.5, -5, 6)
-                love.graphics.line(-3.5, -5.5, -5, -6)
-                
-                -- Center line detail
-                love.graphics.line(-2, 0, 0, 0)
-                
+
+                -- Check render type
+                if type(r) == "table" and r.type then
+                    -- Look up ship data if we have a type
+                    local Ships = require "src.data.ships"
+                    local shipData = Ships[r.type]
+
+                    if shipData and shipData.draw then
+                        shipData.draw(r.color)
+                    else
+                        -- Fallback
+                        local color = r.color or { 1, 1, 1 }
+                        love.graphics.setColor(unpack(color))
+                        love.graphics.circle("fill", 0, 0, 10)
+                    end
+                else
+                    -- Fallback for simple shapes or old format
+                    local color = { 1, 1, 1, 1 }
+                    if type(r) == "table" then
+                        if type(r.color) == "table" then
+                            color = r.color
+                        elseif #r >= 3 then
+                            color = r
+                        end
+                    elseif type(r) == "number" then
+                        color = { r, r, r, 1 }
+                    end
+
+                    local cr = color[1] or 1
+                    local cg = color[2] or 1
+                    local cb = color[3] or 1
+                    local ca = color[4] or 1
+                    love.graphics.setColor(cr, cg, cb, ca)
+                    love.graphics.circle("fill", 0, 0, 10)
+                end
+
                 love.graphics.pop()
             end
 
@@ -166,13 +152,13 @@ function RenderSystem:draw()
     love.graphics.origin()
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("FPS: " .. love.timer.getFPS(), 10, 10)
-    
+
     -- Safely handle nil values for camera position
     local sector_x_display = cam_sector_x or "N/A"
     local sector_y_display = cam_sector_y or "N/A"
     local pos_x_display = cam_x and math.floor(cam_x) or "N/A"
     local pos_y_display = cam_y and math.floor(cam_y) or "N/A"
-    
+
     love.graphics.print("Sector: [" .. sector_x_display .. ", " .. sector_y_display .. "]", 10, 30)
     love.graphics.print("Local Pos: " .. pos_x_display .. ", " .. pos_y_display, 10, 50)
 end

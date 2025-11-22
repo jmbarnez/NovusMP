@@ -25,8 +25,24 @@ Concord.component("input", function(c)
     c.turn = 0 -- -1 (left), 0 (none), 1 (right)
 end)
 
-Concord.component("render", function(c, color)
-    c.color = color or {1, 1, 1}
+Concord.component("render", function(c, arg)
+    if type(arg) == "table" then
+        if arg.type or arg.render_type then
+            c.type = arg.type or arg.render_type
+            c.color = arg.color or {1, 1, 1}
+        else
+            c.color = arg
+        end
+    elseif type(arg) == "string" then
+        c.type = arg
+        c.color = {1, 1, 1}
+    else
+        c.color = arg or {1, 1, 1}
+    end
+end)
+
+Concord.component("name", function(c, value)
+    c.value = value or ""
 end)
 
 -- Pilot/Ship Separation

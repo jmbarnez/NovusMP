@@ -28,5 +28,7 @@ return {
     CAMERA_MIN_ZOOM = 0.5,
     CAMERA_MAX_ZOOM = 2.5,
     CAMERA_ZOOM_STEP = 0.1,
-    CAMERA_DEFAULT_ZOOM = 1
+    CAMERA_DEFAULT_ZOOM = 1,
+
+    PLAYER_NAME = "Pilot"
 }

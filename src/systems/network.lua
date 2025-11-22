@@ -208,7 +208,7 @@ end
 
 function NetworkIOSystem:hostSend()
     -- Host gathers ALL networked entities and sends a Snapshot
-    -- Packet: S | Count | ID | Sx | Sy | x | y | r | ID...
+    -- Packet: S | Count | ID | Name | Sx | Sy | x | y | r | ID...
     local parts = {}
     local count = 0
     
@@ -216,9 +216,10 @@ function NetworkIOSystem:hostSend()
         local t = e.transform
         local s = e.sector
         local nid = e.network_identity.id
-        
-        table.insert(parts, string.format("%s|%d|%d|%.1f|%.1f|%.2f", 
-            nid, s.x, s.y, t.x, t.y, t.r
+        local name = (e.name and e.name.value) or ""
+
+        table.insert(parts, string.format("%s|%s|%d|%d|%.1f|%.1f|%.2f", 
+            nid, name, s.x, s.y, t.x, t.y, t.r
         ))
         count = count + 1
     end
@@ -263,6 +264,18 @@ function NetworkIOSystem:handleEvent(event)
                     entity.input.thrust = (tonumber(data[3]) == 1)
                     entity.input.turn = tonumber(data[4])
                 end
+            elseif op == "N" then
+                -- Client is reporting its display name
+                local id = data[2]
+                local name = data[3] or ""
+                local entity = self.entity_map[id]
+                if entity then
+                    if entity.name then
+                        entity.name.value = name
+                    else
+                        entity:give("name", name)
+                    end
+                end
             end
         elseif self.role == "CLIENT" then
             if op == "W" then
@@ -270,6 +283,11 @@ function NetworkIOSystem:handleEvent(event)
                 Config.MY_NETWORK_ID = my_id
                 print("Client: Assigned ID " .. my_id)
                 self.connection_state = "connected"
+
+                local name = Config.PLAYER_NAME or "Player"
+                if self.socket then
+                    self.socket:send("N|" .. my_id .. "|" .. name, nil, "reliable")
+                end
             elseif op == "S" then
                 self:processSnapshot(data)
             end
@@ -278,40 +296,44 @@ function NetworkIOSystem:handleEvent(event)
 end
 
 function NetworkIOSystem:processSnapshot(data)
-    -- Format: S | Count | [ID, Sx, Sy, x, y, r] ...
+    -- Format: S | Count | [ID, Name, Sx, Sy, x, y, r] ...
     local count = tonumber(data[2])
     local index = 3
-    local step = 6 -- Params per entity
-    
+    local step = 7 -- Params per entity
+
     for i = 1, count do
         if index + step - 1 > #data then break end
-        
+
         local id = data[index]
-        local sx = tonumber(data[index+1])
-        local sy = tonumber(data[index+2])
-        local x  = tonumber(data[index+3])
-        local y  = tonumber(data[index+4])
-        local r  = tonumber(data[index+5])
-        
+        local name = data[index+1] or ""
+        local sx = tonumber(data[index+2])
+        local sy = tonumber(data[index+3])
+        local x  = tonumber(data[index+4])
+        local y  = tonumber(data[index+5])
+        local r  = tonumber(data[index+6])
+
         local entity = self.entity_map[id]
         local is_me = (id == Config.MY_NETWORK_ID)
-        
+
         if not entity then
             -- Entity doesn't exist locally, SPAWN IT
             local world = self:getWorld()
-            
+
             entity = Concord.entity(world)
             entity:give("transform", x, y, r)
             entity:give("sector", sx, sy)
-            entity:give("render", is_me and {0.2, 1, 0.2} or {1, 0.2, 0.2}) -- Green if me, Red if other
+
+            local color = is_me and {0.2, 1, 0.2} or {1, 0.2, 0.2}
+            entity:give("render", { type = "drone", color = color }) -- Green if me, Red if other
+
             entity:give("network_identity", id)
             entity:give("network_sync", x, y, r, sx, sy)
-            
+
             if is_me then
                 entity:give("input") -- Local input storage
                 entity:give("pilot") -- Tag as local player
                 entity:give("controlling", entity) -- Self-controlling
-                
+
                 -- CRITICAL: Give physics body to local player so we can PREDICT movement
                 if world.physics_world then
                     local body = love.physics.newBody(world.physics_world, x, y, "dynamic")
@@ -319,12 +341,22 @@ function NetworkIOSystem:processSnapshot(data)
                     local shape = love.physics.newCircleShape(10)
                     local fixture = love.physics.newFixture(body, shape, 1)
                     fixture:setRestitution(0.2)
-                    
+
                     entity:give("physics", body, shape, fixture)
                     entity:give("vehicle", Config.THRUST, Config.ROTATION_SPEED, Config.MAX_SPEED)
                 end
             end
-            
+
+            if name ~= "" then
+                if entity.name then
+                    entity.name.value = name
+                else
+                    entity:give("name", name)
+                end
+            elseif is_me then
+                entity:give("name", Config.PLAYER_NAME or "Player")
+            end
+
             self.entity_map[id] = entity
         else
             -- Update Target for Interpolation
@@ -335,12 +367,12 @@ function NetworkIOSystem:processSnapshot(data)
                 ns.target_x = x
                 ns.target_y = y
                 ns.target_r = r
-                
+
                 -- RECONCILIATION (Only for me)
                 if is_me and entity.transform and entity.sector then
                     -- Calculate distance between predicted (current) and server (target)
                     local dist_sq = (entity.transform.x - x)^2 + (entity.transform.y - y)^2
-                    
+
                     -- If sector mismatch, snap immediately
                     if entity.sector.x ~= sx or entity.sector.y ~= sy then
                         if entity.physics and entity.physics.body then
@@ -360,8 +392,16 @@ function NetworkIOSystem:processSnapshot(data)
                     end
                 end
             end
+
+            if name ~= "" then
+                if entity.name then
+                    entity.name.value = name
+                else
+                    entity:give("name", name)
+                end
+            end
         end
-        
+
         index = index + step
     end
 end

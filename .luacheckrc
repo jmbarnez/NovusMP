@@ -1,0 +1,4 @@
+globals = {
+   "love",
+}
+ignore = { "_" }
