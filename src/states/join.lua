@@ -29,7 +29,7 @@ function JoinState:enter(prev)
     -- Background is a simple solid color; starfield is reserved for gameplay.
 
     -- Fonts for title, labels, and buttons.
-    self.fontTitle  = Theme.getFont("title")
+    self.fontTitle  = Theme.getFont("button")
     self.fontLabel  = Theme.getFont("button")
     self.fontButton = Theme.getFont("button")
 
@@ -155,7 +155,7 @@ function JoinState:updateButtonLayout()
     local startX = (sw - spacing.buttonWidth) * 0.5
 
     -- Push buttons down a bit so they sit below the input fields.
-    local baseY = sh * 0.65
+    local baseY = sh * 0.75
     local startY = baseY - totalHeight * 0.5
 
     for index = 1, #self.buttons do
@@ -179,7 +179,7 @@ function JoinState:draw()
     -- 2. Title
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setFont(self.fontTitle)
-    love.graphics.printf("JOIN GAME", 0, sh * 0.08, sw, "center")
+    love.graphics.printf("JOIN GAME", 0, sh * 0.12, sw, "center")
 
     -- 3. Input fields for IP and Port
     local labelFont = self.fontLabel

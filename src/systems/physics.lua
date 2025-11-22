@@ -7,10 +7,25 @@ local PhysicsSystem = Concord.system({
 
 function PhysicsSystem:init()
     self.role = "SINGLE"
+    self.callbacks_registered = false
 end
 
 function PhysicsSystem:setRole(role)
     self.role = role
+end
+
+function PhysicsSystem:handleBeginContact(fixtureA, fixtureB, contact)
+    if self.role == "CLIENT" then return end
+
+    local world = self:getWorld()
+    if not world then return end
+
+    local entityA = fixtureA and fixtureA:getUserData() or nil
+    local entityB = fixtureB and fixtureB:getUserData() or nil
+
+    if not entityA or not entityB then return end
+
+    world:emit("collision", entityA, entityB, contact)
 end
 
 function PhysicsSystem:update(dt)
@@ -21,6 +36,13 @@ function PhysicsSystem:update(dt)
 
     local world = self:getWorld()
     if not world.physics_world then return end
+
+    if not self.callbacks_registered then
+        world.physics_world:setCallbacks(function(fixtureA, fixtureB, contact)
+            self:handleBeginContact(fixtureA, fixtureB, contact)
+        end)
+        self.callbacks_registered = true
+    end
     
     -- 1. Step Simulation
     world.physics_world:update(dt)
@@ -35,6 +57,12 @@ function PhysicsSystem:update(dt)
         local body = p.body
 
         if body then
+            if self.role == "CLIENT" and e:has("network_sync") and not e:has("pilot") then
+                body:setPosition(t.x, t.y)
+                body:setAngle(t.r or 0)
+                goto continue_entity
+            end
+
             local x, y = body:getPosition()
             local r = body:getAngle()
             local sector_changed = false
@@ -67,6 +95,8 @@ function PhysicsSystem:update(dt)
             t.x, t.y = x, y
             t.r = r
         end
+
+        ::continue_entity::
     end
 end
 

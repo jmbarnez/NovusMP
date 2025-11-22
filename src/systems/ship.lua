@@ -14,6 +14,7 @@ function ShipManager.spawn(world, ship_type_key, id, x, y, is_host_player)
     -- Physics Body
     local body = love.physics.newBody(world.physics_world, x, y, "dynamic")
     body:setLinearDamping(data.linear_damping)
+    body:setAngularDamping(data.linear_damping)
 
     local shape = love.physics.newCircleShape(data.radius)
     local fixture = love.physics.newFixture(body, shape, data.mass)
@@ -26,6 +27,7 @@ function ShipManager.spawn(world, ship_type_key, id, x, y, is_host_player)
     ship:give("physics", body, shape, fixture)
     ship:give("vehicle", data.thrust, data.rotation_speed, data.max_speed)
     ship:give("network_identity", id)
+    fixture:setUserData(ship)
 
     -- Render component now stores the type and color
     -- Host is green-ish, Client is red-ish (default logic from before)

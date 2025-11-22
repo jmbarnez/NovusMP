@@ -28,16 +28,22 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords) {
     float combined_wave = (wave1 + wave2) * 0.5; // Combine waves
 
     // Generate color based on wave and time
-    float r = sin(time * color_frequency + combined_wave * 2.0) * color_amplitude + base_brightness;
-    float g = sin(time * color_frequency + combined_wave * 2.0 + 2.0) * color_amplitude + base_brightness; // Phase shift
-    float b = sin(time * color_frequency + combined_wave * 2.0 + 4.0) * color_amplitude + base_brightness; // Phase shift
+    float intensity = combined_wave * 0.5 + 0.5;
+    vec3 baseColor = vec3(0.0, 0.45, 0.25);   // deep green
+    vec3 highlightColor = vec3(0.2, 0.9, 0.6); // bright teal
+    vec3 aurora = mix(baseColor, highlightColor, intensity);
+
+    float subtleShift = smoothstep(0.6, 1.0, intensity) * 0.35 * (sin(time * color_frequency * 0.7) * 0.5 + 0.5);
+    vec3 purpleTint = vec3(0.4, 0.2, 0.6);
+    aurora = mix(aurora, purpleTint, subtleShift);
+
+    float brightness = base_brightness + color_amplitude * (intensity - 0.5);
+    aurora *= brightness;
 
     // Clamp values to [0, 1]
-    r = clamp(r, 0.0, 1.0);
-    g = clamp(g, 0.0, 1.0);
-    b = clamp(b, 0.0, 1.0);
+    aurora = clamp(aurora, 0.0, 1.0);
 
-    return tex * vec4(r, g, b, 1.0);
+    return tex * vec4(aurora, 1.0);
 }
 ]]
 
@@ -141,7 +147,8 @@ function MenuState:update(dt)
     local randomWidth = 140
     local spacingX = 10
     local centerX = sw2 * 0.5
-    local y = sh2 * 0.3
+    local bottomMargin = 80
+    local y = sh2 - bottomMargin - fieldHeight
     local totalWidth = fieldWidth + spacingX + randomWidth
     local startX = centerX - totalWidth * 0.5
 
@@ -251,7 +258,8 @@ function MenuState:draw()
     local randomWidth = 140
     local spacingX = 10
     local centerX = sw * 0.5
-    local y = sh * 0.3
+    local bottomMargin = 80
+    local y = sh - bottomMargin - fieldHeight
     local totalWidth = fieldWidth + spacingX + randomWidth
     local startX = centerX - totalWidth * 0.5
 

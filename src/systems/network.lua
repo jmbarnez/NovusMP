@@ -112,6 +112,11 @@ function NetworkSyncSystem:update(dt)
             while dr > math.pi do dr = dr - math.pi * 2 end
             t.r = t.r + dr * lerp * dt
         end
+
+        if e.physics and e.physics.body then
+            e.physics.body:setPosition(t.x, t.y)
+            e.physics.body:setAngle(t.r or 0)
+        end
         
         ::continue_sync::
     end
@@ -338,12 +343,27 @@ function NetworkIOSystem:processSnapshot(data)
                 if world.physics_world then
                     local body = love.physics.newBody(world.physics_world, x, y, "dynamic")
                     body:setLinearDamping(Config.LINEAR_DAMPING)
+                    body:setAngularDamping(Config.LINEAR_DAMPING)
+
                     local shape = love.physics.newCircleShape(10)
                     local fixture = love.physics.newFixture(body, shape, 1)
                     fixture:setRestitution(0.2)
 
                     entity:give("physics", body, shape, fixture)
                     entity:give("vehicle", Config.THRUST, Config.ROTATION_SPEED, Config.MAX_SPEED)
+                    fixture:setUserData(entity)
+                end
+            else
+                if world.physics_world then
+                    local body = love.physics.newBody(world.physics_world, x, y, "kinematic")
+                    body:setLinearDamping(Config.LINEAR_DAMPING)
+
+                    local shape = love.physics.newCircleShape(10)
+                    local fixture = love.physics.newFixture(body, shape, 1)
+                    fixture:setRestitution(0.2)
+
+                    entity:give("physics", body, shape, fixture)
+                    fixture:setUserData(entity)
                 end
             end
 

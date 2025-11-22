@@ -4,6 +4,7 @@ local Camera     = require "hump.camera"
 local Concord    = require "concord"
 local Config     = require "src.config"
 local Background = require "src.background"
+local Chat       = require "src.ui.chat"
 
 require "src.components"
 
@@ -19,6 +20,9 @@ function PlayState:enter(prev, role)
     self.role = role or "SINGLE"
     self.world = Concord.world()
     self.world.background = Background.new()
+
+    Chat.enable()
+    Chat.system("Entered game as " .. self.role)
 
     -- Camera setup
     self.world.camera = Camera.new()
@@ -70,6 +74,10 @@ function PlayState:enter(prev, role)
         -- Clients spawn NOTHING initially.
         -- They wait for "WELCOME" to set ID, and "SNAP" to create the entity.
     end
+
+    self.world:on("collision", function(entityA, entityB, contact)
+        print("Bonk!", entityA, entityB)
+    end)
 end
 
 function PlayState:update(dt)
@@ -124,6 +132,10 @@ function PlayState:keypressed(key)
     if key == "h" and self.role == "SINGLE" then
         self:enableHosting()
     end
+end
+
+function PlayState:leave()
+    Chat.disable()
 end
 
 return PlayState

@@ -4,12 +4,66 @@
 local Gamestate = require "hump.gamestate"
 local Config    = require "src.config"
 local MenuState = require "src.states.menu"
+local Chat      = require "src.ui.chat"
 
 if not Config.NETWORK_AVAILABLE then
     print("WARNING: library 'enet' not found. Networking disabled.")
 end
 
 function love.load()
-    Gamestate.registerEvents()
+    -- Initialize Chat
+    Chat.init()
+    Chat.system("System initialized.")
+    
+    -- Start game in Menu
     Gamestate.switch(MenuState)
+end
+
+function love.update(dt)
+    Gamestate.update(dt)
+    Chat.update(dt)
+end
+
+function love.draw()
+    Gamestate.draw()
+    Chat.draw()
+end
+
+function love.keypressed(key, scancode, isrepeat)
+    if Chat.keypressed(key) then return end
+    Gamestate.keypressed(key, scancode, isrepeat)
+end
+
+function love.textinput(t)
+    if Chat.textinput(t) then return end
+    Gamestate.textinput(t)
+end
+
+-- Forward other events to Gamestate
+function love.keyreleased(key, scancode)
+    Gamestate.keyreleased(key, scancode)
+end
+
+function love.mousepressed(x, y, button, istouch, presses)
+    Gamestate.mousepressed(x, y, button, istouch, presses)
+end
+
+function love.mousereleased(x, y, button, istouch, presses)
+    Gamestate.mousereleased(x, y, button, istouch, presses)
+end
+
+function love.wheelmoved(x, y)
+    Gamestate.wheelmoved(x, y)
+end
+
+function love.resize(w, h)
+    Gamestate.resize(w, h)
+end
+
+function love.focus(f)
+    Gamestate.focus(f)
+end
+
+function love.quit()
+    return Gamestate.quit()
 end

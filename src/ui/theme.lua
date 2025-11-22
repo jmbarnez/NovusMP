@@ -31,6 +31,7 @@ Theme.spacing = {
 Theme.fonts = {
     title = {path = "assets/fonts/Orbitron-Regular.ttf", size = 128},
     button = {path = "assets/fonts/Orbitron-Regular.ttf", size = 20},
+    chat = {path = "assets/fonts/Orbitron-Regular.ttf", size = 14},
 }
 
 local fontCache = {}
