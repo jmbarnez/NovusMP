@@ -108,9 +108,92 @@ function RenderSystem:draw()
 
                 love.graphics.rotate(t.r or 0)
 
-                -- Check render type
-                if type(r) == "table" and r.type then
-                    -- Look up ship data if we have a type
+                -- Check render type / asteroid
+                if e.asteroid then
+                    -- Procedural asteroid polygons (always used for asteroids)
+                    local color = { 1, 1, 1, 1 }
+                    if type(r) == "table" then
+                        if type(r.color) == "table" then
+                            color = r.color
+                        elseif #r >= 3 then
+                            color = r
+                        end
+                    elseif type(r) == "number" then
+                        color = { r, r, r, 1 }
+                    end
+
+                    local cr = color[1] or 1
+                    local cg = color[2] or 1
+                    local cb = color[3] or 1
+                    local ca = color[4] or 1
+                    love.graphics.setColor(cr, cg, cb, ca)
+
+                    local radius = 10
+                    if type(r) == "table" and r.radius then
+                        radius = r.radius
+                    end
+
+                    local key
+                    if e.network_identity and e.network_identity.id then
+                        key = e.network_identity.id
+                    else
+                        key = tostring(e)
+                    end
+
+                    local poly = asteroidShapes[key]
+                    if not poly then
+                        poly = {}
+                        local seed = hashString(key)
+                        local rng = (love and love.math and love.math.newRandomGenerator) and love.math.newRandomGenerator(seed) or nil
+                        local function rnd()
+                            if rng and rng.random then
+                                return rng:random()
+                            else
+                                return math.random()
+                            end
+                        end
+
+                        local vertex_count = 8 + math.floor(rnd() * 5)
+                        if vertex_count < 5 then vertex_count = 5 end
+
+                        for i = 1, vertex_count do
+                            local angle = (i / vertex_count) * math.pi * 2 + (rnd() - 0.5) * 0.4
+                            local rr = radius * (0.7 + rnd() * 0.4)
+                            table.insert(poly, math.cos(angle) * rr)
+                            table.insert(poly, math.sin(angle) * rr)
+                        end
+
+                        asteroidShapes[key] = poly
+                    end
+
+                    love.graphics.polygon("fill", poly)
+
+                    local inner = {}
+                    for i = 1, #poly, 2 do
+                        table.insert(inner, poly[i] * 0.7)
+                        table.insert(inner, poly[i + 1] * 0.7)
+                    end
+
+                    local hr = math.min((cr or 1) * 1.1, 1)
+                    local hg = math.min((cg or 1) * 1.1, 1)
+                    local hb = math.min((cb or 1) * 1.1, 1)
+                    local ha = (ca or 1) * 0.9
+                    love.graphics.setColor(hr, hg, hb, ha)
+                    love.graphics.polygon("fill", inner)
+
+                    local orr = (cr or 1) * 0.5
+                    local org = (cg or 1) * 0.5
+                    local orb = (cb or 1) * 0.5
+                    local ora = ca or 1
+                    local oldLineWidth = love.graphics.getLineWidth()
+                    love.graphics.setColor(orr, org, orb, ora)
+                    love.graphics.setLineWidth(2)
+                    love.graphics.polygon("line", poly)
+                    love.graphics.setLineWidth(oldLineWidth)
+
+                    love.graphics.setColor(cr, cg, cb, ca)
+                elseif type(r) == "table" and r.type then
+                    -- Ships and other typed renderables
                     local Ships = require "src.data.ships"
                     local shipData = Ships[r.type]
 
@@ -146,44 +229,7 @@ function RenderSystem:draw()
                         radius = r.radius
                     end
 
-                    if e.asteroid then
-                        local key
-                        if e.network_identity and e.network_identity.id then
-                            key = e.network_identity.id
-                        else
-                            key = tostring(e)
-                        end
-
-                        local poly = asteroidShapes[key]
-                        if not poly then
-                            poly = {}
-                            local seed = hashString(key)
-                            local rng = (love and love.math and love.math.newRandomGenerator) and love.math.newRandomGenerator(seed) or nil
-                            local function rnd()
-                                if rng and rng.random then
-                                    return rng:random()
-                                else
-                                    return math.random()
-                                end
-                            end
-
-                            local vertex_count = 8 + math.floor(rnd() * 5)
-                            if vertex_count < 5 then vertex_count = 5 end
-
-                            for i = 1, vertex_count do
-                                local angle = (i / vertex_count) * math.pi * 2 + (rnd() - 0.5) * 0.4
-                                local rr = radius * (0.7 + rnd() * 0.4)
-                                table.insert(poly, math.cos(angle) * rr)
-                                table.insert(poly, math.sin(angle) * rr)
-                            end
-
-                            asteroidShapes[key] = poly
-                        end
-
-                        love.graphics.polygon("fill", poly)
-                    else
-                        love.graphics.circle("fill", 0, 0, radius)
-                    end
+                    love.graphics.circle("fill", 0, 0, radius)
                 end
 
                 love.graphics.pop()

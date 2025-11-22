@@ -254,17 +254,18 @@ local Concord = require "concord"
 	                entity = Concord.entity(world)
 	                entity:give("transform", x, y, r)
 	                entity:give("sector", sx, sy)
-	                entity:give("render", { color = {0.7, 0.7, 0.7, 1}, radius = extra > 0 and extra or 30 })
+	                local visual_radius = extra > 0 and extra or 30
+	                entity:give("render", { render_type = "asteroid", color = {0.7, 0.7, 0.7, 1}, radius = visual_radius })
 	                entity:give("network_identity", id)
 	                entity:give("network_sync", x, y, r, sx, sy)
 	                entity:give("asteroid")
 
 	                if world.physics_world then
-	                    local radius = extra > 0 and extra or 30
+	                    local phys_radius = visual_radius * 0.8
 	                    local body = love.physics.newBody(world.physics_world, x, y, "kinematic")
 	                    body:setLinearDamping(Config.LINEAR_DAMPING)
 
-	                    local shape   = love.physics.newCircleShape(radius)
+	                    local shape   = love.physics.newCircleShape(phys_radius)
 	                    local fixture = love.physics.newFixture(body, shape, 1)
 	                    fixture:setRestitution(0.1)
 

@@ -30,6 +30,9 @@ Concord.component("render", function(c, arg)
         if arg.type or arg.render_type then
             c.type = arg.type or arg.render_type
             c.color = arg.color or {1, 1, 1}
+            if arg.radius then
+                c.radius = arg.radius
+            end
         else
             c.color = arg
         end
