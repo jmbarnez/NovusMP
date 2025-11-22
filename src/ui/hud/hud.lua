@@ -1,6 +1,6 @@
 local Theme = require "src.ui.theme"
 local Config = require "src.config"
-local StatusPanel = require "src.hud.status_panel"
+local StatusPanel = require "src.ui.hud.status_panel"
 
 local HUD = {}
 

@@ -113,7 +113,7 @@ function PhysicsSystem:update(dt)
                     local spawn_x = t.x + math.cos(angle) * parent_radius * 0.5
                     local spawn_y = t.y + math.sin(angle) * parent_radius * 0.5
                     
-                    -- Create chunk entity
+                    -- Create chunk entity (no lifetime - chunks persist)
                     local chunk = Concord.entity(world)
                     chunk:give("transform", spawn_x, spawn_y, math.random() * math.pi * 2)
                     chunk:give("sector", s.x, s.y)
@@ -123,7 +123,6 @@ function PhysicsSystem:update(dt)
                         radius = chunk_radius
                     })
                     chunk:give("asteroid_chunk")
-                    chunk:give("lifetime", 2.0 + math.random() * 2.0)
                     
                     -- Create physics body for chunk
                     local chunk_body = love.physics.newBody(world.physics_world, spawn_x, spawn_y, "dynamic")

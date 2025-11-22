@@ -233,13 +233,7 @@ function RenderSystem:draw()
                     local cg = color[2] or 1
                     local cb = color[3] or 1
                     local ca = color[4] or 1
-                    
-                    -- apply fade out based on lifetime if available
-                    if e.lifetime then
-                        local fade = 1.0 - (e.lifetime.elapsed / e.lifetime.duration)
-                        ca = ca * math.max(0, fade)
-                    end
-                    
+                     
                     love.graphics.setColor(cr, cg, cb, ca)
 
                     local radius = 10
@@ -288,6 +282,33 @@ function RenderSystem:draw()
                     love.graphics.setLineWidth(1.5)
                     love.graphics.polygon("line", poly)
                     love.graphics.setLineWidth(oldLineWidth)
+                elseif e.projectile_shard then
+                    -- Render projectile shards (tiny particles with fade-out)
+                    local color = { 1, 1, 1, 1 }
+                    if type(r) == "table" and r.color then
+                        color = r.color
+                    end
+
+                    local cr = color[1] or 1
+                    local cg = color[2] or 1
+                    local cb = color[3] or 1
+                    local ca = color[4] or 1
+                     
+                    -- Apply fade out based on lifetime
+                    if e.lifetime then
+                        local fade = 1.0 - (e.lifetime.elapsed / e.lifetime.duration)
+                        ca = ca * math.max(0, fade)
+                    end
+                     
+                    love.graphics.setColor(cr, cg, cb, ca)
+
+                    local radius = 2
+                    if type(r) == "table" and r.radius then
+                        radius = r.radius
+                    end
+
+                    -- Simple circle for shards
+                    love.graphics.circle("fill", 0, 0, radius)
                 elseif type(r) == "table" and r.type then
                     if r.type == "projectile" then
                         local color = r.color or { 1, 1, 1, 1 }
@@ -350,7 +371,7 @@ function RenderSystem:draw()
 
                     love.graphics.circle("fill", 0, 0, radius)
                 end
-                
+                 
                 -- Debug: Draw a small red dot at the center to ensure it's being drawn at all
                 -- love.graphics.setColor(1, 0, 0, 1)
                 -- love.graphics.circle("fill", 0, 0, 2)

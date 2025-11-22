@@ -1,18 +1,18 @@
 local Concord = require "concord"
 
-local ChunkSystem = Concord.system({
-    pool = {"chunk", "lifetime", "physics", "transform"}
+local ProjectileShardSystem = Concord.system({
+    pool = {"projectile_shard", "lifetime", "transform"}
 })
 
-function ChunkSystem:init()
+function ProjectileShardSystem:init()
     self.role = "SINGLE"
 end
 
-function ChunkSystem:setRole(role)
+function ProjectileShardSystem:setRole(role)
     self.role = role
 end
 
-function ChunkSystem:update(dt)
+function ProjectileShardSystem:update(dt)
     -- Only run on server/single player
     if self.role == "CLIENT" then return end
     
@@ -22,8 +22,9 @@ function ChunkSystem:update(dt)
         if lifetime then
             lifetime.elapsed = lifetime.elapsed + dt
             
-            -- Remove chunk when lifetime expires
+            -- Remove shard when lifetime expires
             if lifetime.elapsed >= lifetime.duration then
+                -- Clean up physics if present
                 local p = e.physics
                 if p then
                     if p.fixture then
@@ -39,4 +40,4 @@ function ChunkSystem:update(dt)
     end
 end
 
-return ChunkSystem
+return ProjectileShardSystem

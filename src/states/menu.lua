@@ -1,7 +1,7 @@
 ---@diagnostic disable: undefined-global
 
 local Gamestate = require "hump.gamestate"
-local Utils     = require "src.utils"
+local Utils     = require "src.utils.utils"
 local Theme     = require "src.ui.theme"
 local Config    = require "src.config"
 local NewGameState = require "src.states.newgame"

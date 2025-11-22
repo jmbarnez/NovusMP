@@ -30,6 +30,7 @@ function Background.new(enableNebula)
         self.nebulaShader = nil
     else
         self.nebulaShader = love.graphics.newShader([[
+
         extern number time;
         extern vec2 offset;
         extern vec2 resolution;
@@ -48,7 +49,7 @@ function Background.new(enableNebula)
             vec2 i = floor(p);
             vec2 f = fract(p);
             f = f * f * (3.0 - 2.0 * f);
-            
+             
             float n = mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
                           mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
                           f.y);
@@ -59,7 +60,7 @@ function Background.new(enableNebula)
             float value = 0.0;
             float amplitude = 0.6;
             float frequency = 1.0;
-            
+             
             for (int i = 0; i < 6; i++) {
                 if (i >= octaves) break;
                 value += amplitude * noise(p * frequency);
@@ -72,33 +73,33 @@ function Background.new(enableNebula)
         vec4 effect(vec4 vcolor, Image tex, vec2 texcoord, vec2 screen_coords) {
             vec2 uv = screen_coords / resolution;
             vec2 p = (uv - 0.5) * 2.0;
-            
+             
             vec2 ncoord = uv * noiseScale + offset * 0.00005;
             ncoord += flow * time * 0.8;
-            
+             
             float base = fbm(ncoord * 0.8, 5);
             float detail = fbm(ncoord * 3.2 + vec2(time * 0.1), 4);
             float turb = fbm(ncoord * 1.5 + vec2(time * 0.05), 1);
-            
+             
             float density = base * 0.7 + detail * 0.3;
             density = pow(density, 1.8);
             density += turb * 0.2;
-            
+             
             float mask = fbm(ncoord * 0.4 + vec2(13.7, -8.3), 3);
             mask = smoothstep(0.3, 0.8, mask);
             density *= mask;
-            
+             
             vec3 color = mix(colorA, colorB, density);
-            
+             
             float glow = smoothstep(0.6, 0.9, density);
             color += glow * mix(colorA, colorB, 0.5) * 0.4;
-            
+             
             float highlights = smoothstep(0.85, 1.0, density);
             color += highlights * vec3(0.9, 0.95, 1.0) * 0.3;
-            
+             
             float alpha = density * alphaScale * 0.85;
             alpha = clamp(alpha, 0.0, 1.0);
-            
+             
             return vec4(color, alpha) * vcolor;
         }
     ]])
@@ -301,7 +302,7 @@ function Background:draw(cam_x, cam_y, cam_sector_x, cam_sector_y)
     end
 
     self.starBatch:clear()
-    
+     
     for _, star in ipairs(self.stars) do
         local px = (star.x - abs_x * star.speed) % sw
         local py = (star.y - abs_y * star.speed) % sh

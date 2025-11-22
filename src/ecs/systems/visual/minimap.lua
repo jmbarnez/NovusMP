@@ -1,18 +1,21 @@
 -- src/systems/minimap.lua
 local Concord = require "concord"
 local Config  = require "src.config"
+
 local MinimapSystem = Concord.system({
     -- Entities to draw on the minimap
     drawPool = { "transform", "render" },
     -- Entities to track for the camera center (usually the player)
     cameraPool = { "input", "controlling" }
 })
+
 -- Minimap Configuration
 local MAP_SIZE = 200       -- Size of the minimap in pixels (square)
 local MAP_MARGIN = 20      -- Margin from the top-right corner
 local ZOOM_LEVEL = 0.1     -- Scale factor (how much world area is shown)
 local BORDER_COLOR = {1, 1, 1, 1}
 local BG_COLOR = {0, 0, 0, 0.8}
+
 function MinimapSystem:draw()
     local screen_w, screen_h = love.graphics.getDimensions()
     
@@ -42,6 +45,7 @@ function MinimapSystem:draw()
             cam_sector_y = target_entity.sector.y
         end
     end
+    
     -- 3. Draw Minimap Background & Border
     love.graphics.push()
     love.graphics.origin() -- Reset any previous transformations
@@ -106,4 +110,5 @@ function MinimapSystem:draw()
     love.graphics.setScissor()
     love.graphics.pop()
 end
+
 return MinimapSystem
