@@ -3,7 +3,7 @@
 local Gamestate = require "hump.gamestate"
 local Utils     = require "src.utils"
 local Theme     = require "src.ui.theme"
-local Background = require "src.background"
+local NewGameState = require "src.states.newgame"
 
 -- Simplified Shader just for the Title Text (Aurora Effect on Text)
 local TitleShaderSource = [[
@@ -23,9 +23,7 @@ end
 local MenuState = {}
 
 function MenuState:enter()
-    -- Initialize Background System
-    self.background = Background.new()
-    self.menuScroll = 0 -- Used to animate background in menu
+    -- Initialize menu state (no animated background here)
 
     -- Fonts
     self.fontTitle = Theme.getFont("title")
@@ -40,15 +38,14 @@ function MenuState:enter()
         {
             label = "NEW GAME",
             action = function()
-                local PlayState = require("src.states.play")
-                Gamestate.switch(PlayState, "SINGLE")
+                Gamestate.switch(NewGameState)
             end,
         },
         {
             label = "JOIN GAME",
             action = function()
-                local PlayState = require("src.states.play")
-                Gamestate.switch(PlayState, "CLIENT")
+                local JoinState = require("src.states.join")
+                Gamestate.switch(JoinState)
             end,
         },
         {
@@ -67,13 +64,6 @@ end
 
 function MenuState:update(dt)
     local sw = love.graphics.getWidth()
-    
-    -- Update Background
-    if self.background then
-        self.background:update(dt)
-        -- Scroll the menu background slowly to the right
-        self.menuScroll = self.menuScroll + (dt * 30) 
-    end
 
     if self.titleShader then
         self.shaderTime = self.shaderTime + dt
@@ -143,11 +133,9 @@ end
 function MenuState:draw()
     local sw, sh = love.graphics.getDimensions()
 
-    -- 1. Draw Background (New System)
-    -- We pass menuScroll as the 'camera x' to simulate movement
-    if self.background then
-        self.background:draw(self.menuScroll, 0, 0, 0)
-    end
+    -- 1. Clear to a simple background color (no starfield in menus)
+    local bg = Theme.getBackgroundColor()
+    love.graphics.clear(bg[1], bg[2], bg[3], bg[4])
 
     -- 2. Draw Title "NOVUS"
     love.graphics.setColor(1, 1, 1, 1)
@@ -204,11 +192,10 @@ function MenuState:draw()
 end
 
 function MenuState:keypressed(key)
-    local PlayState = require("src.states.play")
-    if key == 'n' then Gamestate.switch(PlayState, "SINGLE")
-    elseif key == 'h' then Gamestate.switch(PlayState, "HOST")
-    elseif key == 'j' then Gamestate.switch(PlayState, "CLIENT") 
-    elseif key == 'escape' then love.event.quit() end
+    -- Keyboard shortcuts mirror the menu buttons.
+    if key == 'escape' then
+        love.event.quit()
+    end
 end
 
 return MenuState

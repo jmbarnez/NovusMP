@@ -130,15 +130,44 @@ function NetworkIOSystem:init()
     self.timer = 0
     self.send_rate = 0.03 -- 30Hz
     self.entity_map = {} -- ID -> Entity
+    self.connection_state = "disconnected"
+    self.connect_time = 0
 end
 
 function NetworkIOSystem:setRole(role)
     self.role = role
     self.socket = EnetSocket.new(role)
+    self.connect_time = 0
+
+    if self.socket then
+        if role == "CLIENT" then
+            self.connection_state = "connecting"
+        else
+            self.connection_state = "connected"
+        end
+    else
+        if role == "CLIENT" then
+            self.connection_state = "failed"
+        else
+            self.connection_state = "disconnected"
+        end
+    end
 end
 
 function NetworkIOSystem:update(dt)
     if not self.socket then return end
+
+    if self.role == "CLIENT" then
+        if self.connection_state == "connecting" then
+            self.connect_time = self.connect_time + dt
+            if self.connect_time >= Config.CONNECT_TIMEOUT then
+                self.connection_state = "failed"
+                return
+            end
+        elseif self.connection_state == "failed" then
+            return
+        end
+    end
     
     -- 1. Service Network
     self.socket:service()
@@ -219,6 +248,8 @@ function NetworkIOSystem:handleEvent(event)
             -- Find entity belonging to this peer and destroy it
             -- (For now, we rely on ID mapping or simple cleanup later)
             print("Host: Client disconnected")
+        elseif self.role == "CLIENT" then
+            self.connection_state = "failed"
         end
     elseif event.type == "receive" then
         local data = split(event.data)
@@ -239,6 +270,7 @@ function NetworkIOSystem:handleEvent(event)
                 local my_id = data[2]
                 Config.MY_NETWORK_ID = my_id
                 print("Client: Assigned ID " .. my_id)
+                self.connection_state = "connected"
             elseif op == "SNAP" then
                 self:processSnapshot(data)
             end
@@ -274,7 +306,7 @@ function NetworkIOSystem:processSnapshot(data)
             entity:give("sector", sx, sy)
             entity:give("render", is_me and {0.2, 1, 0.2} or {1, 0.2, 0.2}) -- Green if me, Red if other
             entity:give("network_identity", id)
-            entity:give("network_sync", x, y, r)
+            entity:give("network_sync", x, y, r, sx, sy)
             
             -- IMPORTANT: If this is ME, I need an Input component so InputSystem can read my baton
             if is_me then
@@ -301,7 +333,7 @@ function NetworkIOSystem:processSnapshot(data)
 end
 
 function NetworkIOSystem:getConnectionState()
-    return (self.socket and self.socket.peer) and "connected" or "connecting"
+    return self.connection_state or "disconnected"
 end
 
 return {

@@ -48,8 +48,10 @@ Concord.component("network_identity", function(c, id)
     c.owner_peer_id = nil -- Used by Host to map Entity -> ENet Peer
 end)
 
-Concord.component("network_sync", function(c, tx, ty, tr)
+Concord.component("network_sync", function(c, tx, ty, tr, tsx, tsy)
     c.target_x = tx or 0
     c.target_y = ty or 0
     c.target_r = tr or 0
+    c.target_sector_x = tsx or 0
+    c.target_sector_y = tsy or 0
 end)
