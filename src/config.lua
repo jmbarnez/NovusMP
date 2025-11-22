@@ -7,7 +7,7 @@ return {
     ENET = status_enet and enet or nil,
     SOCKET_AVAILABLE = status_socket,
     SOCKET = status_socket and socket or nil,
-    MY_NETWORK_ID = tostring(os.time() .. math.random(1000,9999)),
+    MY_NETWORK_ID = tostring(math.floor(os.time() + (love.timer.getTime() * 10000)) .. math.random(1000,9999)),
     PORT = 12345,
     SERVER_HOST = "localhost",
     CONNECT_TIMEOUT = 2.0,
@@ -18,6 +18,7 @@ return {
     MAX_SPEED = 600,
     ROTATION_SPEED = 4,
     LINEAR_DAMPING = 2.5,
+    LERP_FACTOR = 10.0,
     
     -- Infinite Universe Config
     SECTOR_SIZE = 10000, -- The width/height of one "Sector" before coordinates wrap

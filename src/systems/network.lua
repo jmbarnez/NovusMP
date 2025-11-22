@@ -3,24 +3,20 @@ local Config = require "src.config"
 
 --[[ 
     ===========================================================================
-    HOST AUTHORITATIVE PROTOCOL
+    HOST AUTHORITATIVE PROTOCOL (OPTIMIZED)
     ===========================================================================
     
     1. INPUT (Client -> Host)
-       "INPUT | InputID (NetworkID) | Thrust (0/1) | Turn (-1/0/1)"
-       sent frequently so Host knows what the player wants to do.
-
+       "I|InputID(NetworkID)|Thrust(0/1)|Turn(-1/0/1)"
+       
     2. SNAPSHOT (Host -> Client)
-       "SNAP | Count | [ID, SecX, SecY, X, Y, R] | [ID, SecX...]"
-       Host broadcasts the state of ALL dynamic entities.
-
+       "S|Count|[ID,SecX,SecY,X,Y,R]|[ID,SecX...]"
+       
     3. WELCOME (Host -> Client)
-       "WELCOME | AssignedNetworkID"
-       Tells the client who they are.
-
+       "W|AssignedNetworkID"
+       
     4. DISCONNECT (Host -> Client)
-       "DISCONNECT | NetworkID"
-       Tells clients to delete an entity.
+       "D|NetworkID"
     ===========================================================================
 ]]
 
@@ -88,9 +84,12 @@ local NetworkSyncSystem = Concord.system({ pool = {"network_sync", "transform", 
 
 function NetworkSyncSystem:update(dt)
     -- Clients interpolate towards the server's truth
-    local lerp = 10.0 -- Higher = Snappier, Lower = Smoother
+    local lerp = Config.LERP_FACTOR or 10.0
     
     for _, e in ipairs(self.pool) do
+        -- SKIP interpolation for the local pilot (Client-Side Prediction)
+        if e:has("pilot") then goto continue_sync end
+
         local sync = e.network_sync
         local t = e.transform
         local s = e.sector
@@ -113,6 +112,8 @@ function NetworkSyncSystem:update(dt)
             while dr > math.pi do dr = dr - math.pi * 2 end
             t.r = t.r + dr * lerp * dt
         end
+        
+        ::continue_sync::
     end
 end
 
@@ -128,7 +129,7 @@ function NetworkIOSystem:init()
     self.role = "SINGLE"
     self.socket = nil
     self.timer = 0
-    self.send_rate = 0.03 -- 30Hz
+    self.send_rate = Config.SEND_RATE or 0.03
     self.entity_map = {} -- ID -> Entity
     self.connection_state = "disconnected"
     self.connect_time = 0
@@ -194,8 +195,8 @@ function NetworkIOSystem:clientSend()
         -- Only send input for MY player
         if e.network_identity.id == Config.MY_NETWORK_ID then
             local i = e.input
-            -- Packet: INPUT|ID|THRUST(1/0)|TURN
-            local packet = string.format("INPUT|%s|%d|%d", 
+            -- Packet: I|ID|THRUST(1/0)|TURN
+            local packet = string.format("I|%s|%d|%d", 
                 Config.MY_NETWORK_ID, 
                 i.thrust and 1 or 0, 
                 i.turn
@@ -207,7 +208,7 @@ end
 
 function NetworkIOSystem:hostSend()
     -- Host gathers ALL networked entities and sends a Snapshot
-    -- Packet: SNAP | Count | ID | Sx | Sy | x | y | r | ID...
+    -- Packet: S | Count | ID | Sx | Sy | x | y | r | ID...
     local parts = {}
     local count = 0
     
@@ -223,7 +224,7 @@ function NetworkIOSystem:hostSend()
     end
     
     if count > 0 then
-        local packet = "SNAP|" .. count .. "|" .. table.concat(parts, "|")
+        local packet = "S|" .. count .. "|" .. table.concat(parts, "|")
         self.socket:send(packet, nil, "unreliable")
     end
 end
@@ -241,12 +242,10 @@ function NetworkIOSystem:handleEvent(event)
             self:getWorld():emit("spawn_player", new_id, event.peer)
             
             -- Tell Client who they are
-            self.socket:send("WELCOME|" .. new_id, event.peer, "reliable")
+            self.socket:send("W|" .. new_id, event.peer, "reliable")
         end
     elseif event.type == "disconnect" then
         if self.role == "HOST" then
-            -- Find entity belonging to this peer and destroy it
-            -- (For now, we rely on ID mapping or simple cleanup later)
             print("Host: Client disconnected")
         elseif self.role == "CLIENT" then
             self.connection_state = "failed"
@@ -256,7 +255,7 @@ function NetworkIOSystem:handleEvent(event)
         local op = data[1]
 
         if self.role == "HOST" then
-            if op == "INPUT" then
+            if op == "I" then
                 -- Update server-side input component
                 local id = data[2]
                 local entity = self.entity_map[id]
@@ -266,12 +265,12 @@ function NetworkIOSystem:handleEvent(event)
                 end
             end
         elseif self.role == "CLIENT" then
-            if op == "WELCOME" then
+            if op == "W" then
                 local my_id = data[2]
                 Config.MY_NETWORK_ID = my_id
                 print("Client: Assigned ID " .. my_id)
                 self.connection_state = "connected"
-            elseif op == "SNAP" then
+            elseif op == "S" then
                 self:processSnapshot(data)
             end
         end
@@ -279,7 +278,7 @@ function NetworkIOSystem:handleEvent(event)
 end
 
 function NetworkIOSystem:processSnapshot(data)
-    -- Format: SNAP | Count | [ID, Sx, Sy, x, y, r] ...
+    -- Format: S | Count | [ID, Sx, Sy, x, y, r] ...
     local count = tonumber(data[2])
     local index = 3
     local step = 6 -- Params per entity
@@ -295,11 +294,11 @@ function NetworkIOSystem:processSnapshot(data)
         local r  = tonumber(data[index+5])
         
         local entity = self.entity_map[id]
+        local is_me = (id == Config.MY_NETWORK_ID)
         
         if not entity then
             -- Entity doesn't exist locally, SPAWN IT
             local world = self:getWorld()
-            local is_me = (id == Config.MY_NETWORK_ID)
             
             entity = Concord.entity(world)
             entity:give("transform", x, y, r)
@@ -308,11 +307,22 @@ function NetworkIOSystem:processSnapshot(data)
             entity:give("network_identity", id)
             entity:give("network_sync", x, y, r, sx, sy)
             
-            -- IMPORTANT: If this is ME, I need an Input component so InputSystem can read my baton
             if is_me then
                 entity:give("input") -- Local input storage
                 entity:give("pilot") -- Tag as local player
                 entity:give("controlling", entity) -- Self-controlling
+                
+                -- CRITICAL: Give physics body to local player so we can PREDICT movement
+                if world.physics_world then
+                    local body = love.physics.newBody(world.physics_world, x, y, "dynamic")
+                    body:setLinearDamping(Config.LINEAR_DAMPING)
+                    local shape = love.physics.newCircleShape(10)
+                    local fixture = love.physics.newFixture(body, shape, 1)
+                    fixture:setRestitution(0.2)
+                    
+                    entity:give("physics", body, shape, fixture)
+                    entity:give("vehicle", Config.THRUST, Config.ROTATION_SPEED, Config.MAX_SPEED)
+                end
             end
             
             self.entity_map[id] = entity
@@ -325,6 +335,30 @@ function NetworkIOSystem:processSnapshot(data)
                 ns.target_x = x
                 ns.target_y = y
                 ns.target_r = r
+                
+                -- RECONCILIATION (Only for me)
+                if is_me and entity.transform and entity.sector then
+                    -- Calculate distance between predicted (current) and server (target)
+                    local dist_sq = (entity.transform.x - x)^2 + (entity.transform.y - y)^2
+                    
+                    -- If sector mismatch, snap immediately
+                    if entity.sector.x ~= sx or entity.sector.y ~= sy then
+                        if entity.physics and entity.physics.body then
+                            entity.physics.body:setPosition(x, y)
+                        end
+                        entity.transform.x = x
+                        entity.transform.y = y
+                        entity.sector.x = sx
+                        entity.sector.y = sy
+                    -- If position drift is too large (> 50 units), snap
+                    elseif dist_sq > 2500 then
+                        if entity.physics and entity.physics.body then
+                            entity.physics.body:setPosition(x, y)
+                        end
+                        entity.transform.x = x
+                        entity.transform.y = y
+                    end
+                end
             end
         end
         

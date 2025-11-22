@@ -5,7 +5,8 @@ local Config = require "src.config"
 
 local STAR_FIELD_RADIUS = 60000
 
-math.randomseed(os.time())
+-- Improved seeding
+math.randomseed(os.time() + math.floor(love.timer.getTime() * 1000))
 math.random(); math.random(); math.random()
 
 function Background.new(enableNebula)

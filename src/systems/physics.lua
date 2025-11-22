@@ -14,9 +14,10 @@ function PhysicsSystem:setRole(role)
 end
 
 function PhysicsSystem:update(dt)
-    -- CRITICAL: Physics only runs on HOST or SINGLE player
-    -- Clients are "Dumb terminals" regarding physics
-    if self.role == "CLIENT" then return end
+    -- CRITICAL: Physics runs on HOST, SINGLE, or for the LOCAL PILOT on CLIENT
+    -- If we are CLIENT, we still want to step the world so our predicted ship moves.
+    -- Remote entities (ghosts) should NOT have physics bodies, so they won't be affected.
+    if self.role == "CLIENT" and not self:getWorld().physics_world then return end
 
     local world = self:getWorld()
     if not world.physics_world then return end

@@ -26,8 +26,6 @@ function InputSystem:update(dt)
         world.controls:update(dt)
         
         -- Find the entity that represents the local player
-        -- In Host/Single mode, this is the player entity.
-        -- In Client mode, this is the "Ghost" entity we send inputs for.
         for _, e in ipairs(self.controllers) do
             if e:has("pilot") then -- Assuming 'pilot' tag marks the local user's avatar
                 local input = e.input
@@ -43,10 +41,15 @@ function InputSystem:update(dt)
         end
     end
 
-    -- 2. APPLY PHYSICS (Host / Single Player Only)
-    -- Clients do NOT run this part. They only send inputs.
-    if self.role == "HOST" or self.role == "SINGLE" then
+    -- 2. APPLY PHYSICS (Host / Single Player / Client Prediction)
+    -- Clients NOW run this for their own 'pilot' entity
+    if self.role == "HOST" or self.role == "SINGLE" or self.role == "CLIENT" then
         for _, e in ipairs(self.controllers) do
+            -- If Client, ONLY apply to self (pilot)
+            if self.role == "CLIENT" and not e:has("pilot") then
+                goto continue_input
+            end
+
             local input = e.input
             local ship = e.controlling.entity
 
@@ -81,6 +84,8 @@ function InputSystem:update(dt)
                 -- D. Sync Transform
                 trans.r = body:getAngle()
             end
+            
+            ::continue_input::
         end
     end
 end
