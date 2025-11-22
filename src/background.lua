@@ -1,5 +1,9 @@
 local Background = {}
 Background.__index = Background
+local Constants = require "src.constants"
+local Config = require "src.config"
+
+local STAR_FIELD_RADIUS = 60000
 
 math.randomseed(os.time())
 math.random(); math.random(); math.random()
@@ -7,7 +11,8 @@ math.random(); math.random(); math.random()
 function Background.new()
     local self = setmetatable({}, Background)
 
-    local star_size = 16
+    local star_size = Constants.BACKGROUND.STAR_SIZE
+
     local star_canvas = love.graphics.newCanvas(star_size, star_size)
     love.graphics.setCanvas(star_canvas)
     love.graphics.clear(0, 0, 0, 0)
@@ -16,7 +21,7 @@ function Background.new()
     love.graphics.setCanvas()
 
     self.starTexture = love.graphics.newImage(star_canvas:newImageData())
-    self.starBatch = love.graphics.newSpriteBatch(self.starTexture, 3000, "static")
+    self.starBatch = love.graphics.newSpriteBatch(self.starTexture, Constants.BACKGROUND.STAR_SPRITE_BATCH_SIZE, "static")
 
     self.time = 0
     self.nebulaShader = love.graphics.newShader([[
@@ -52,43 +57,73 @@ function Background.new()
 
         float fbm(vec2 p) {
             float value = 0.0;
-            float amplitude = 0.5;
-            float frequency = 1.0;
-            for (int i = 0; i < 5; i++) {
+            float amplitude = 0.7;
+            float frequency = 0.7;
+            // Fewer, smoother octaves to avoid "puffy" blobs
+            for (int i = 0; i < 4; i++) {
                 value += amplitude * noise(p * frequency);
-                frequency *= 2.0;
-                amplitude *= 0.5;
+                frequency *= 1.9;
+                amplitude *= 0.55;
             }
             return value;
+        }
+
+        // Sparse mask to create patchiness and thin regions
+        float patchMask(vec2 p) {
+            float m1 = fbm(p * 0.35 + vec2(7.3, -2.1));
+            float m2 = fbm(p * 0.18 + vec2(-11.7, 4.9));
+            float mask = m1 * 0.7 + m2 * 0.3;
+            mask = pow(mask, 2.3);         // kill mid‑range, accentuate dense clumps
+            mask = smoothstep(0.35, 0.75, mask);
+            return mask;
         }
 
         vec4 effect(vec4 vcolor, Image tex, vec2 texcoord, vec2 screen_coords) {
             vec2 uv = screen_coords / resolution;
             vec2 p = (uv - 0.5) * 2.0;
             float dist = length(p);
-            float vignette = 1.0 - smoothstep(0.9, 1.4, dist);
 
+            // Stronger falloff so nebulae are thinner toward edges
+            float vignette = 1.0 - smoothstep(0.6, 1.1, dist);
+
+            // Base coordinates for nebula
             vec2 ncoord = uv * noiseScale + offset * 0.00003;
-
             ncoord += flow * time;
 
-            float n1 = fbm(ncoord);
-            float n2 = fbm(ncoord * 2.7 + vec2(13.2, -4.7));
+            // Multi-scale structure
+            float n_coarse = fbm(ncoord * 0.9);
+            float n_mid    = fbm(ncoord * 2.4 + vec2(13.2, -4.7));
+            float n_fine   = fbm(ncoord * 5.3 + vec2(-8.1, 9.7));
 
-            float neb_raw = n1 * 1.3 - n2 * 0.7;
-            neb_raw = clamp(neb_raw * 1.6 + 0.2, 0.0, 1.0);
+            // Build a thinner density field
+            float neb_raw = n_coarse * 1.1 - n_mid * 0.6 + n_fine * 0.25;
+            neb_raw = clamp(neb_raw * 1.9 - 0.3, 0.0, 1.0);
 
-            float ridged = 1.0 - abs(neb_raw * 2.0 - 1.0);
-            float clouds = mix(neb_raw, ridged, 0.5);
-            clouds = pow(clouds, 1.2);
-            clouds *= (0.8 + 0.2 * vignette);
+            // Make it patchy: multiply by sparse mask
+            float mask = patchMask(ncoord);
+            neb_raw *= mask;
+
+            // Sharpen the contrast a bit so there are clearer holes
+            neb_raw = pow(neb_raw, 1.35);
+
+            // Soft "ridges" to hint at thin filaments instead of blobs
+            float ridged = 1.0 - abs(neb_raw * 2.3 - 1.1);
+            float filaments = mix(neb_raw, ridged, 0.4);
+            filaments = pow(filaments, 1.4);
+
+            // Thin overall coverage: scale down intensity and limit to vignette
+            float clouds = filaments * vignette;
+            clouds *= 0.7;
 
             vec3 nebula = mix(colorA, colorB, neb_raw);
 
-            float core = smoothstep(0.65, 0.95, neb_raw);
-            nebula += core * 0.25;
+            // Small bright cores only in the densest regions
+            float core = smoothstep(0.78, 0.96, neb_raw);
+            nebula += core * 0.22;
 
+            // Alpha: thin, patchy, and attenuated by vignette
             float alpha = clouds * alphaScale;
+            alpha *= 0.65;
 
             return vec4(nebula, alpha) * vcolor;
         }
@@ -96,30 +131,39 @@ function Background.new()
 
     self.nebulaParams = {}
 
-    self.nebulaParams.noiseScale = 2.0 + math.random() * 3.0
-    local flowAngle = math.random() * math.pi * 2
-    local flowSpeed = math.random() * 0.00003
-    self.nebulaParams.flow = {math.cos(flowAngle) * flowSpeed, math.sin(flowAngle) * flowSpeed}
+    self.nebulaParams.noiseScale = Constants.BACKGROUND.NEBULA.NOISE_SCALE_BASE + math.random() * Constants.BACKGROUND.NEBULA.NOISE_SCALE_RANGE
 
-    self.nebulaParams.alphaScale = 0.25 + math.random() * 0.5
+    local flowAngle = math.random() * math.pi * 2
+    local flowSpeed = Constants.BACKGROUND.NEBULA.FLOW_SPEED_BASE + math.random() * Constants.BACKGROUND.NEBULA.FLOW_SPEED_RANGE
+
+    self.nebulaParams.flow = {
+        math.cos(flowAngle) * flowSpeed,
+        math.sin(flowAngle) * flowSpeed
+    }
+
+    self.nebulaParams.alphaScale = Constants.BACKGROUND.NEBULA.ALPHA_SCALE_BASE + math.random() * Constants.BACKGROUND.NEBULA.ALPHA_SCALE_RANGE
 
     local function randomColorComponent(min, max)
         return min + math.random() * (max - min)
     end
 
-    local intensityA = 0.5 + math.random() * 0.5
-    local intensityB = 0.5 + math.random() * 0.5
+    local intensityBase = Constants.BACKGROUND.NEBULA.INTENSITY_BASE
+    local intensityRange = Constants.BACKGROUND.NEBULA.INTENSITY_RANGE
+    local intensityA = intensityBase + math.random() * intensityRange
+    local intensityB = intensityBase + math.random() * intensityRange
+
+    local hueShift = math.random() * Constants.BACKGROUND.NEBULA.HUE_SHIFT_RANGE
 
     self.nebulaParams.colorA = {
-        randomColorComponent(0.1, 0.9) * intensityA,
-        randomColorComponent(0.1, 0.9) * intensityA,
-        randomColorComponent(0.1, 0.9) * intensityA
+        randomColorComponent(0.15, 0.75) * intensityA,
+        randomColorComponent(0.10 + hueShift, 0.85) * intensityA,
+        randomColorComponent(0.35, 0.95) * intensityA
     }
 
     self.nebulaParams.colorB = {
-        randomColorComponent(0.1, 0.9) * intensityB,
-        randomColorComponent(0.1, 0.9) * intensityB,
-        randomColorComponent(0.1, 0.9) * intensityB
+        randomColorComponent(0.4, 0.9) * intensityB,
+        randomColorComponent(0.1, 0.6) * intensityB,
+        randomColorComponent(0.15, 0.7) * intensityB
     }
 
     self:generateStars()
@@ -127,30 +171,28 @@ function Background.new()
     return self
 end
 
-function Background:generateStars()
+function Background:generateStars(w, h)
     self.stars = {}
-    local w, h = love.graphics.getDimensions()
 
-    -- Real star color temperatures (RGB approximations)
-    local star_colors = {
-        {0.6, 0.7, 1.0},   -- Blue (O-type, hottest)
-        {0.75, 0.85, 1.0}, -- Blue-white (B-type)
-        {0.95, 0.95, 1.0}, -- White (A-type)
-        {1.0, 1.0, 0.95},  -- Yellow-white (F-type)
-        {1.0, 0.95, 0.8},  -- Yellow (G-type, like our Sun)
-        {1.0, 0.85, 0.6},  -- Orange (K-type)
-        {1.0, 0.7, 0.5}    -- Red (M-type, coolest)
-    }
-    
-    -- Distribution weights (red/orange stars are most common)
-    local color_weights = {0.03, 0.08, 0.12, 0.15, 0.20, 0.22, 0.20}
+    local sw, sh
+    if w and h then
+        sw, sh = w, h
+    else
+        sw, sh = love.graphics.getDimensions()
+    end
 
-    local count = 2000
+    self.screenWidth = sw
+    self.screenHeight = sh
+
+    local star_colors = Constants.BACKGROUND.STAR_COLORS
+    local color_weights = Constants.BACKGROUND.STAR_COLOR_WEIGHTS
+
+    local count = Constants.BACKGROUND.STAR_COUNT
+
     for i = 1, count do
         local brightness = math.random()
         local size_factor = brightness * brightness
 
-        -- Select star color based on realistic distribution
         local roll = math.random()
         local cumulative = 0
         local color_tint = star_colors[#star_colors]
@@ -164,9 +206,10 @@ function Background:generateStars()
 
         local layer_roll = math.random()
         local layer
-        if layer_roll < 0.2 then
+        local thresholds = Constants.BACKGROUND.LAYER_THRESHOLDS
+        if layer_roll < thresholds.NEAR then
             layer = 3
-        elseif layer_roll < 0.6 then
+        elseif layer_roll < thresholds.MID then
             layer = 2
         else
             layer = 1
@@ -176,27 +219,35 @@ function Background:generateStars()
         local speed
         local base_alpha
 
-        if layer == 3 then
-            size = 0.06 + size_factor * 0.18
-            speed = 0.006 + size_factor * 0.010
-            base_alpha = 0.5 + size_factor * 0.5
-        elseif layer == 2 then
-            size = 0.03 + size_factor * 0.14
-            speed = 0.003 + size_factor * 0.007
-            base_alpha = 0.3 + size_factor * 0.5
-        else
-            size = 0.015 + size_factor * 0.10
-            speed = 0.001 + size_factor * 0.005
-            base_alpha = 0.15 + size_factor * 0.4
+        local layer_params = Constants.BACKGROUND.LAYER_PARAMS[layer]
+        if layer_params then
+            size = layer_params.SIZE_MIN + size_factor * layer_params.SIZE_FACTOR
+            speed = layer_params.SPEED_MIN + size_factor * layer_params.SPEED_FACTOR
+            base_alpha = layer_params.ALPHA_MIN + size_factor * layer_params.ALPHA_FACTOR
         end
 
-        local twinkle_speed = 0.5 + math.random() * 1.5
-        local twinkle_amp = 0.3 + math.random() * 0.4
+        if size < Constants.BACKGROUND.MIN_STAR_SIZE then
+            size = Constants.BACKGROUND.MIN_STAR_SIZE
+        end
+
+        local twinkle_speed
+        local twinkle_amp
+        if layer == 3 then
+            twinkle_speed = 0.35 + math.random() * 0.5
+            twinkle_amp = 0.08 + math.random() * 0.06
+        elseif layer == 2 then
+            twinkle_speed = 0.25 + math.random() * 0.4
+            twinkle_amp = 0.04 + math.random() * 0.06
+        else
+            twinkle_speed = 0.18 + math.random() * 0.3
+            twinkle_amp = 0.02 + math.random() * 0.04
+        end
+
         local twinkle_phase = math.random() * math.pi * 2
 
         self.stars[i] = {
-            x = math.random(0, w),
-            y = math.random(0, h),
+            x = math.random(0, self.screenWidth),
+            y = math.random(0, self.screenHeight),
             size = size,
             speed = speed,
             alpha = base_alpha,
@@ -231,17 +282,16 @@ end
 function Background:draw(cam_x, cam_y, cam_sector_x, cam_sector_y)
     local sw, sh = love.graphics.getDimensions()
 
-    local abs_x = (cam_sector_x or 0) * 10000 + (cam_x or 0)
-    local abs_y = (cam_sector_y or 0) * 10000 + (cam_y or 0)
+    if not self.screenWidth or self.screenWidth ~= sw or self.screenHeight ~= sh then
+        self:generateStars(sw, sh)
+    end
 
-    -- Deep space background
-    love.graphics.setColor(0.005, 0.005, 0.01, 1)
+    local abs_x = (cam_sector_x or 0) * Config.SECTOR_SIZE + (cam_x or 0)
+    local abs_y = (cam_sector_y or 0) * Config.SECTOR_SIZE + (cam_y or 0)
+
+    local clear = Constants.BACKGROUND.CLEAR_COLOR
+    love.graphics.setColor(clear[1], clear[2], clear[3], clear[4])
     love.graphics.rectangle("fill", 0, 0, sw, sh)
-
-    love.graphics.setColor(0.01, 0.01, 0.03, 0.9)
-    love.graphics.rectangle("fill", 0, 0, sw, sh * 0.6)
-    love.graphics.setColor(0.0, 0.0, 0.06, 0.6)
-    love.graphics.rectangle("fill", 0, sh * 0.3, sw, sh * 0.7)
 
     if self.nebulaShader and self.nebulaParams then
         local offset_x = abs_x * 0.05
@@ -260,12 +310,14 @@ function Background:draw(cam_x, cam_y, cam_sector_x, cam_sector_y)
         love.graphics.setShader()
     end
 
-    -- Stars with parallax
     self.starBatch:clear()
     
     for _, star in ipairs(self.stars) do
         local px = (star.x - abs_x * star.speed) % sw
         local py = (star.y - abs_y * star.speed) % sh
+
+        px = math.floor(px + 0.5)
+        py = math.floor(py + 0.5)
 
         self.starBatch:setColor(
             star.color_tint[1],

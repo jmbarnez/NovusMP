@@ -30,8 +30,8 @@ function RenderSystem:draw()
     if target_entity and target_entity.transform and target_entity.sector then
         cam_x = target_entity.transform.x
         cam_y = target_entity.transform.y
-        cam_sector_x = target_entity.sector.x
-        cam_sector_y = target_entity.sector.y
+        cam_sector_x = target_entity.sector.x or 0
+        cam_sector_y = target_entity.sector.y or 0
     end
 
     -- Update HUMP Camera to the local coordinates
@@ -68,8 +68,8 @@ function RenderSystem:draw()
             end
 
             -- Calculate Sector Difference
-            local diff_x = s.x - cam_sector_x
-            local diff_y = s.y - cam_sector_y
+            local diff_x = s.x - (cam_sector_x or 0)
+            local diff_y = s.y - (cam_sector_y or 0)
 
             -- Optimization: Only draw entities in neighbor sectors
             if math.abs(diff_x) <= 1 and math.abs(diff_y) <= 1 then
