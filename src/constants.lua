@@ -58,15 +58,15 @@ Constants.BACKGROUND = {
     TWINKLE_AMP_RANGE = 0.4,
 
     NEBULA = {
-        NOISE_SCALE_BASE = 3.0,
-        NOISE_SCALE_RANGE = 2.0,
+        NOISE_SCALE_BASE = 1.5,
+        NOISE_SCALE_RANGE = 5.0,
         FLOW_SPEED_BASE = 0.00001,
-        FLOW_SPEED_RANGE = 0.00002,
-        ALPHA_SCALE_BASE = 0.18,
-        ALPHA_SCALE_RANGE = 0.25,
-        INTENSITY_BASE = 0.4,
-        INTENSITY_RANGE = 0.35,
-        HUE_SHIFT_RANGE = 0.25
+        FLOW_SPEED_RANGE = 0.00004,
+        ALPHA_SCALE_BASE = 0.12,
+        ALPHA_SCALE_RANGE = 0.55,
+        INTENSITY_BASE = 0.45,
+        INTENSITY_RANGE = 0.80,
+        HUE_SHIFT_RANGE = 0.70
     }
 }
 

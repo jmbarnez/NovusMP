@@ -33,6 +33,9 @@ function Background.new()
         extern number alphaScale;
         extern vec3 colorA;
         extern vec3 colorB;
+        extern vec2 nebulaCenter;
+        extern number vignetteInner;
+        extern number vignetteOuter;
 
         float hash(vec2 p) {
             p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -80,11 +83,11 @@ function Background.new()
 
         vec4 effect(vec4 vcolor, Image tex, vec2 texcoord, vec2 screen_coords) {
             vec2 uv = screen_coords / resolution;
-            vec2 p = (uv - 0.5) * 2.0;
+            vec2 p = (uv - nebulaCenter) * 2.0;
             float dist = length(p);
 
             // Stronger falloff so nebulae are thinner toward edges
-            float vignette = 1.0 - smoothstep(0.6, 1.1, dist);
+            float vignette = 1.0 - smoothstep(vignetteInner, vignetteOuter, dist);
 
             // Base coordinates for nebula
             vec2 ncoord = uv * noiseScale + offset * 0.00003;
@@ -113,35 +116,34 @@ function Background.new()
 
             // Thin overall coverage: scale down intensity and limit to vignette
             float clouds = filaments * vignette;
-            clouds *= 0.7;
+            clouds *= 1.05;
 
             vec3 nebula = mix(colorA, colorB, neb_raw);
 
+            // Emphasize pleasing mid-density regions
+            float midband = smoothstep(0.25, 0.6, neb_raw);
+            float softband = smoothstep(0.05, 0.35, neb_raw);
+
+            // Soft backlight tint based on the layer's palette
+            vec3 backTint = normalize(colorA + colorB + vec3(0.35, 0.35, 0.45));
+
+            nebula *= 0.55 + 0.45 * midband;
+            nebula += backTint * clouds * 0.25 * softband;
+
             // Small bright cores only in the densest regions
             float core = smoothstep(0.78, 0.96, neb_raw);
-            nebula += core * 0.22;
+            nebula += core * 0.35;
 
-            // Alpha: thin, patchy, and attenuated by vignette
+            // Alpha: thin, patchy, and attenuated by vignette, but slightly stronger overall
             float alpha = clouds * alphaScale;
-            alpha *= 0.65;
+            alpha *= 0.8;
+            alpha = clamp(alpha, 0.0, 1.0);
 
             return vec4(nebula, alpha) * vcolor;
         }
     ]])
 
-    self.nebulaParams = {}
-
-    self.nebulaParams.noiseScale = Constants.BACKGROUND.NEBULA.NOISE_SCALE_BASE + math.random() * Constants.BACKGROUND.NEBULA.NOISE_SCALE_RANGE
-
-    local flowAngle = math.random() * math.pi * 2
-    local flowSpeed = Constants.BACKGROUND.NEBULA.FLOW_SPEED_BASE + math.random() * Constants.BACKGROUND.NEBULA.FLOW_SPEED_RANGE
-
-    self.nebulaParams.flow = {
-        math.cos(flowAngle) * flowSpeed,
-        math.sin(flowAngle) * flowSpeed
-    }
-
-    self.nebulaParams.alphaScale = Constants.BACKGROUND.NEBULA.ALPHA_SCALE_BASE + math.random() * Constants.BACKGROUND.NEBULA.ALPHA_SCALE_RANGE
+    self.nebulaParams = { layers = {} }
 
     local function randomColorComponent(min, max)
         return min + math.random() * (max - min)
@@ -149,22 +151,62 @@ function Background.new()
 
     local intensityBase = Constants.BACKGROUND.NEBULA.INTENSITY_BASE
     local intensityRange = Constants.BACKGROUND.NEBULA.INTENSITY_RANGE
-    local intensityA = intensityBase + math.random() * intensityRange
-    local intensityB = intensityBase + math.random() * intensityRange
 
-    local hueShift = math.random() * Constants.BACKGROUND.NEBULA.HUE_SHIFT_RANGE
-
-    self.nebulaParams.colorA = {
-        randomColorComponent(0.15, 0.75) * intensityA,
-        randomColorComponent(0.10 + hueShift, 0.85) * intensityA,
-        randomColorComponent(0.35, 0.95) * intensityA
+    local layerConfigs = {
+        { parallax = 0.02, noiseMul = 0.8, alphaMul = 0.6 },
+        { parallax = 0.04, noiseMul = 1.0, alphaMul = 0.8 },
+        { parallax = 0.07, noiseMul = 1.3, alphaMul = 1.0 },
     }
 
-    self.nebulaParams.colorB = {
-        randomColorComponent(0.4, 0.9) * intensityB,
-        randomColorComponent(0.1, 0.6) * intensityB,
-        randomColorComponent(0.15, 0.7) * intensityB
-    }
+    for _, cfg in ipairs(layerConfigs) do
+        local layer = {}
+
+        local cx = 0.5 + (math.random() - 0.5) * 0.8
+        local cy = 0.5 + (math.random() - 0.5) * 0.8
+        layer.center = { cx, cy }
+
+        local inner = 0.45 + math.random() * 0.25
+        local outer = inner + 0.4 + math.random() * 0.3
+        layer.vignetteInner = inner
+        layer.vignetteOuter = outer
+
+        layer.offsetBase = { math.random() * 10000, math.random() * 10000 }
+
+        local noiseBase = Constants.BACKGROUND.NEBULA.NOISE_SCALE_BASE
+        local noiseRange = Constants.BACKGROUND.NEBULA.NOISE_SCALE_RANGE
+        layer.noiseScale = (noiseBase + math.random() * noiseRange) * cfg.noiseMul
+
+        local flowAngle = math.random() * math.pi * 2
+        local flowSpeed = Constants.BACKGROUND.NEBULA.FLOW_SPEED_BASE + math.random() * Constants.BACKGROUND.NEBULA.FLOW_SPEED_RANGE
+        layer.flow = {
+            math.cos(flowAngle) * flowSpeed,
+            math.sin(flowAngle) * flowSpeed
+        }
+
+        local intensityA = intensityBase + math.random() * intensityRange
+        local intensityB = intensityBase + math.random() * intensityRange
+        local hueShift = math.random() * Constants.BACKGROUND.NEBULA.HUE_SHIFT_RANGE
+
+        layer.colorA = {
+            randomColorComponent(0.15, 0.75) * intensityA,
+            randomColorComponent(0.10 + hueShift, 0.85) * intensityA,
+            randomColorComponent(0.35, 0.95) * intensityA
+        }
+
+        layer.colorB = {
+            randomColorComponent(0.4, 0.9) * intensityB,
+            randomColorComponent(0.1, 0.6) * intensityB,
+            randomColorComponent(0.15, 0.7) * intensityB
+        }
+
+        local alphaBase = Constants.BACKGROUND.NEBULA.ALPHA_SCALE_BASE
+        local alphaRange = Constants.BACKGROUND.NEBULA.ALPHA_SCALE_RANGE
+        layer.alphaScale = (alphaBase + math.random() * alphaRange) * cfg.alphaMul
+
+        layer.parallax = cfg.parallax
+
+        table.insert(self.nebulaParams.layers, layer)
+    end
 
     self:generateStars()
 
@@ -293,20 +335,31 @@ function Background:draw(cam_x, cam_y, cam_sector_x, cam_sector_y)
     love.graphics.setColor(clear[1], clear[2], clear[3], clear[4])
     love.graphics.rectangle("fill", 0, 0, sw, sh)
 
-    if self.nebulaShader and self.nebulaParams then
-        local offset_x = abs_x * 0.05
-        local offset_y = abs_y * 0.05
-        self.nebulaShader:send("time", self.time or 0)
-        self.nebulaShader:send("offset", {offset_x, offset_y})
-        self.nebulaShader:send("resolution", {sw, sh})
-        self.nebulaShader:send("noiseScale", self.nebulaParams.noiseScale)
-        self.nebulaShader:send("flow", self.nebulaParams.flow)
-        self.nebulaShader:send("alphaScale", self.nebulaParams.alphaScale)
-        self.nebulaShader:send("colorA", self.nebulaParams.colorA)
-        self.nebulaShader:send("colorB", self.nebulaParams.colorB)
+    if self.nebulaShader and self.nebulaParams and self.nebulaParams.layers then
         love.graphics.setShader(self.nebulaShader)
         love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.rectangle("fill", 0, 0, sw, sh)
+
+        for _, layer in ipairs(self.nebulaParams.layers) do
+            local baseOffset = layer.offsetBase or { 0, 0 }
+            local parallax = layer.parallax or 0.05
+            local offset_x = baseOffset[1] + abs_x * parallax
+            local offset_y = baseOffset[2] + abs_y * parallax
+
+            self.nebulaShader:send("time", self.time or 0)
+            self.nebulaShader:send("offset", {offset_x, offset_y})
+            self.nebulaShader:send("resolution", {sw, sh})
+            self.nebulaShader:send("noiseScale", layer.noiseScale)
+            self.nebulaShader:send("flow", layer.flow)
+            self.nebulaShader:send("alphaScale", layer.alphaScale)
+            self.nebulaShader:send("colorA", layer.colorA)
+            self.nebulaShader:send("colorB", layer.colorB)
+            self.nebulaShader:send("nebulaCenter", layer.center)
+            self.nebulaShader:send("vignetteInner", layer.vignetteInner)
+            self.nebulaShader:send("vignetteOuter", layer.vignetteOuter)
+
+            love.graphics.rectangle("fill", 0, 0, sw, sh)
+        end
+
         love.graphics.setShader()
     end
 
