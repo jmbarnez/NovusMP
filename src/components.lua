@@ -56,6 +56,14 @@ Concord.component("shield", function(c, max, regen)
     c.regen = regen or 0
 end)
 
+Concord.component("wallet", function(c, credits)
+    c.credits = credits or 0
+end)
+
+Concord.component("skills", function(c)
+    c.list = {}
+end)
+
 -- Pilot/Ship Separation
 Concord.component("pilot")
 

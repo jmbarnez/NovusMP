@@ -5,6 +5,7 @@ local Gamestate = require "hump.gamestate"
 local Config    = require "src.config"
 local MenuState = require "src.states.menu"
 local Chat      = require "src.ui.chat"
+local Lurker    = require "lurker"
 
 if not Config.NETWORK_AVAILABLE then
     print("WARNING: library 'enet' not found. Networking disabled.")
@@ -20,6 +21,7 @@ function love.load()
 end
 
 function love.update(dt)
+    Lurker.update(dt)
     Gamestate.update(dt)
     Chat.update(dt)
 end

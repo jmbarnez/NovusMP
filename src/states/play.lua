@@ -55,20 +55,46 @@ function PlayState:enter(prev, role)
     self.world:getSystem(PhysicsSystem):setRole(self.role)
     self.world:getSystem(InputSystem):setRole(self.role)
 
+    if Chat.isEnabled() then
+        Chat.setSendHandler(function(message)
+            local net = self.world:getSystem(Network.IO)
+            if net and net.sendChat then
+                net:sendChat(message)
+            else
+                Chat.addMessage("You: " .. message, "text")
+            end
+        end)
+    end
+
     -- === SPAWNING LOGIC ===
+
+    -- Create Local Player (Persistent Data)
+    self.player = Concord.entity(self.world)
+    self.player:give("wallet", 1000) -- Starting credits
+    self.player:give("skills")
+    self.player:give("input")
+    self.player:give("pilot") -- Mark as local player (InputSystem reads baton for this)
 
     if self.role == "HOST" or self.role == "SINGLE" then
         -- Host spawns their own ship immediately
         Config.MY_NETWORK_ID = "HOST_PLAYER"
-        local ship, pilot = ShipSystem.spawn(self.world, "drone", Config.MY_NETWORK_ID, 0, 0, true)
-        pilot:give("pilot") -- Mark as local player (InputSystem reads baton for this)
+        local ship = ShipSystem.spawn(self.world, "drone", Config.MY_NETWORK_ID, 0, 0, true)
+        
+        -- Link Player -> Ship
+        self.player:give("controlling", ship)
+        -- Link Input (so Baton -> Player -> Ship works AND Network -> Ship -> Packet works)
+        self.player.input = ship.input
 
         -- Listen for client joins to spawn their ships
         self.world:on("spawn_player", function(id, peer)
-            local s, p = ShipSystem.spawn(self.world, "drone", id, 100, 0, false)
-            -- We don't give 'pilot' tag because we don't control it locally with baton
-            -- But we do have 'input' component which NetworkIO will update via packets
-            -- Link the Pilot entity to the Ship input so physics applies
+            local s = ShipSystem.spawn(self.world, "drone", id, 100, 0, false)
+            
+            -- Create Remote Player Entity (Logic Controller)
+            local p = Concord.entity(self.world)
+            p:give("controlling", s)
+            p:give("input")
+            
+            -- Link inputs so Network Update (on Ship) -> Physics (via Player) works
             p.input = s.input
         end)
     elseif self.role == "CLIENT" then
@@ -78,6 +104,14 @@ function PlayState:enter(prev, role)
 
     self.world:on("collision", function(entityA, entityB, contact)
         print("Bonk!", entityA, entityB)
+    end)
+
+    self.world:on("client_ship_spawned", function(ship, is_me)
+        if is_me then
+            Chat.system("Your ship has been delivered.")
+            self.player:give("controlling", ship)
+            self.player.input = ship.input
+        end
     end)
 end
 

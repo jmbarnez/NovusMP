@@ -8,7 +8,7 @@ return {
     SOCKET_AVAILABLE = status_socket,
     SOCKET = status_socket and socket or nil,
     MY_NETWORK_ID = tostring(math.floor(os.time() + (love.timer.getTime() * 10000)) .. math.random(1000,9999)),
-    PORT = 12345,
+    PORT = 25565,
     SERVER_HOST = "localhost",
     CONNECT_TIMEOUT = 2.0,
     SEND_RATE = 0.03,

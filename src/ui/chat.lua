@@ -32,14 +32,14 @@ function Chat.init()
     Chat.addMessage("Press ` (tilde) to chat.", "system")
 end
 
-function Chat.addMessage(text, type)
+function Chat.addMessage(text, type, timestamp)
     type = type or "text"
     local color = Chat.colors[type] or Chat.colors.text
     
     table.insert(Chat.lines, {
         text = text,
         color = color,
-        timestamp = os.time()
+        timestamp = timestamp or os.time()
     })
     
     if #Chat.lines > Chat.maxLines then
@@ -52,6 +52,10 @@ function Chat.print(text) Chat.addMessage(tostring(text), "text") end
 function Chat.system(text) Chat.addMessage(tostring(text), "system") end
 function Chat.error(text) Chat.addMessage(tostring(text), "error") end
 function Chat.debug(text) Chat.addMessage(tostring(text), "debug") end
+
+function Chat.setSendHandler(fn)
+    Chat.sendHandler = fn
+end
 
 function Chat.enable()
     Chat.enabled = true
@@ -93,12 +97,18 @@ function Chat.draw()
         -- Stop if we go above the allowed height
         if listBottom - y > Chat.height then break end
         
+        local timePrefix = ""
+        if line.timestamp then
+            timePrefix = os.date("[%H:%M] ", line.timestamp)
+        end
+        local fullText = timePrefix .. line.text
+        
         -- Text shadow for readability
         love.graphics.setColor(0, 0, 0, 0.8)
-        love.graphics.print(line.text, Chat.x + 1, y + 1)
+        love.graphics.print(fullText, Chat.x + 1, y + 1)
         
         love.graphics.setColor(line.color)
-        love.graphics.print(line.text, Chat.x, y)
+        love.graphics.print(fullText, Chat.x, y)
         
         count = count + 1
     end
@@ -138,9 +148,13 @@ function Chat.keypressed(key)
         if key == "return" or key == "kpenter" then
             -- Send message
             if #Chat.inputBuffer > 0 then
-                -- TODO: Hook up to networking
-                Chat.addMessage("You: " .. Chat.inputBuffer, "text")
+                local message = Chat.inputBuffer
                 Chat.inputBuffer = ""
+                if Chat.sendHandler then
+                    Chat.sendHandler(message)
+                else
+                    Chat.addMessage("You: " .. message, "text")
+                end
             end
             Chat.active = false
             love.keyboard.setKeyRepeat(false)

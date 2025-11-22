@@ -53,7 +53,7 @@ function JoinState:enter(prev)
     -- Starting values for inputs: last-used if available, otherwise defaults
     -- from the Config module.
     self.ip = lastIP or Config.SERVER_HOST or "localhost"
-    self.port = tostring(lastPort or Config.PORT or 12345)
+    self.port = tostring(lastPort or Config.PORT or 25565)
 
     -- Track which field is currently active for keyboard input.
     self.activeField = "ip" -- 'ip' or 'port'

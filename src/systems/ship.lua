@@ -44,18 +44,12 @@ function ShipManager.spawn(world, ship_type_key, id, x, y, is_host_player)
     -- Input component
     ship:give("input")
 
-    -- Pilot Entity (Controller)
-    local pilot = Concord.entity(world)
-    pilot:give("controlling", ship)
-    pilot:give("input")
-    ship.pilot = pilot
-
     -- Network Map
     if world:getSystem(Network.IO) then
         world:getSystem(Network.IO).entity_map[id] = ship
     end
 
-    return ship, pilot
+    return ship
 end
 
 return ShipManager
