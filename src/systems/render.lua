@@ -2,6 +2,15 @@ local Concord = require "concord"
 local Config = require "src.config"
 
 local nameFont
+local asteroidShapes = {}
+
+local function hashString(s)
+    local h = 0
+    for i = 1, #s do
+        h = (h * 31 + s:byte(i)) % 2147483647
+    end
+    return h
+end
 
 local RenderSystem = Concord.system({
     drawPool = { "transform", "render", "sector" },
@@ -131,7 +140,50 @@ function RenderSystem:draw()
                     local cb = color[3] or 1
                     local ca = color[4] or 1
                     love.graphics.setColor(cr, cg, cb, ca)
-                    love.graphics.circle("fill", 0, 0, 10)
+
+                    local radius = 10
+                    if type(r) == "table" and r.radius then
+                        radius = r.radius
+                    end
+
+                    if e.asteroid then
+                        local key
+                        if e.network_identity and e.network_identity.id then
+                            key = e.network_identity.id
+                        else
+                            key = tostring(e)
+                        end
+
+                        local poly = asteroidShapes[key]
+                        if not poly then
+                            poly = {}
+                            local seed = hashString(key)
+                            local rng = (love and love.math and love.math.newRandomGenerator) and love.math.newRandomGenerator(seed) or nil
+                            local function rnd()
+                                if rng and rng.random then
+                                    return rng:random()
+                                else
+                                    return math.random()
+                                end
+                            end
+
+                            local vertex_count = 8 + math.floor(rnd() * 5)
+                            if vertex_count < 5 then vertex_count = 5 end
+
+                            for i = 1, vertex_count do
+                                local angle = (i / vertex_count) * math.pi * 2 + (rnd() - 0.5) * 0.4
+                                local rr = radius * (0.7 + rnd() * 0.4)
+                                table.insert(poly, math.cos(angle) * rr)
+                                table.insert(poly, math.sin(angle) * rr)
+                            end
+
+                            asteroidShapes[key] = poly
+                        end
+
+                        love.graphics.polygon("fill", poly)
+                    else
+                        love.graphics.circle("fill", 0, 0, radius)
+                    end
                 end
 
                 love.graphics.pop()

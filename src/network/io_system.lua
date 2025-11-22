@@ -95,7 +95,7 @@ local Concord = require "concord"
 
 	function NetworkIOSystem:hostSend()
 	    -- Host gathers ALL networked entities and sends a snapshot
-	    -- Packet: S | Count | ID | Name | Sx | Sy | x | y | r | ID...
+	    -- Packet: S | Count | ID | Name | Kind | Extra | Sx | Sy | x | y | r | ...
 	    local parts = {}
 	    local count = 0
 
@@ -105,8 +105,19 @@ local Concord = require "concord"
 	        local nid = e.network_identity.id
 	        local name = (e.name and e.name.value) or ""
 
-	        table.insert(parts, string.format("%s|%s|%d|%d|%.1f|%.1f|%.2f",
-	            nid, name, s.x, s.y, t.x, t.y, t.r
+	        local kind = "ship"
+	        local extra = 0
+	        if e.asteroid then
+	            kind = "asteroid"
+	            if e.render and e.render.radius then
+	                extra = e.render.radius
+	            elseif e.physics and e.physics.shape and e.physics.shape.getRadius then
+	                extra = e.physics.shape:getRadius()
+	            end
+	        end
+
+	        table.insert(parts, string.format("%s|%s|%s|%.1f|%d|%d|%.1f|%.1f|%.2f",
+	            nid, name, kind, extra, s.x, s.y, t.x, t.y, t.r
 	        ))
 	        count = count + 1
 	    end
@@ -217,18 +228,20 @@ local Concord = require "concord"
 	    -- Format: S | Count | [ID, Name, Sx, Sy, x, y, r] ...
 	    local count = tonumber(data[2])
 	    local index = 3
-	    local step  = 7 -- Params per entity
+	    local step  = 9 -- Params per entity
 
 	    for i = 1, count do
 	        if index + step - 1 > #data then break end
 
-	        local id   = data[index]
-	        local name = data[index + 1] or ""
-	        local sx   = tonumber(data[index + 2])
-	        local sy   = tonumber(data[index + 3])
-	        local x    = tonumber(data[index + 4])
-	        local y    = tonumber(data[index + 5])
-	        local r    = tonumber(data[index + 6])
+	        local id    = data[index]
+	        local name  = data[index + 1] or ""
+	        local kind  = data[index + 2] or "ship"
+	        local extra = tonumber(data[index + 3]) or 0
+	        local sx    = tonumber(data[index + 4])
+	        local sy    = tonumber(data[index + 5])
+	        local x     = tonumber(data[index + 6])
+	        local y     = tonumber(data[index + 7])
+	        local r     = tonumber(data[index + 8])
 
 	        local entity = self.entity_map[id]
 	        local is_me  = (id == Config.MY_NETWORK_ID)
@@ -237,71 +250,96 @@ local Concord = require "concord"
 	            -- Entity doesn't exist locally, spawn it
 	            local world = self:getWorld()
 
-	            entity = Concord.entity(world)
-	            entity:give("transform", x, y, r)
-	            entity:give("sector", sx, sy)
+	            if kind == "asteroid" then
+	                entity = Concord.entity(world)
+	                entity:give("transform", x, y, r)
+	                entity:give("sector", sx, sy)
+	                entity:give("render", { color = {0.7, 0.7, 0.7, 1}, radius = extra > 0 and extra or 30 })
+	                entity:give("network_identity", id)
+	                entity:give("network_sync", x, y, r, sx, sy)
+	                entity:give("asteroid")
 
-	            local color = is_me and {0.2, 1, 0.2} or {1, 0.2, 0.2}
-	            entity:give("render", { type = "drone", color = color }) -- Green if me, red if other
-
-	            entity:give("network_identity", id)
-	            entity:give("network_sync", x, y, r, sx, sy)
-
-	            if is_me then
-	                entity:give("input")      -- Local input storage
-
-	                -- Give physics body to local player so we can predict movement
 	                if world.physics_world then
-	                    local body = love.physics.newBody(world.physics_world, x, y, "dynamic")
-	                    body:setLinearDamping(Config.LINEAR_DAMPING)
-	                    body:setAngularDamping(Config.LINEAR_DAMPING)
-	                    body:setFixedRotation(true)
-
-	                    local shape   = love.physics.newCircleShape(10)
-	                    local fixture = love.physics.newFixture(body, shape, 1)
-	                    fixture:setRestitution(0.2)
-
-	                    entity:give("physics", body, shape, fixture)
-	                    entity:give("vehicle", Config.THRUST, Config.ROTATION_SPEED, Config.MAX_SPEED)
-	                    fixture:setUserData(entity)
-	                end
-	            else
-	                if world.physics_world then
+	                    local radius = extra > 0 and extra or 30
 	                    local body = love.physics.newBody(world.physics_world, x, y, "kinematic")
 	                    body:setLinearDamping(Config.LINEAR_DAMPING)
 
-	                    local shape   = love.physics.newCircleShape(10)
+	                    local shape   = love.physics.newCircleShape(radius)
 	                    local fixture = love.physics.newFixture(body, shape, 1)
-	                    fixture:setRestitution(0.2)
+	                    fixture:setRestitution(0.1)
 
 	                    entity:give("physics", body, shape, fixture)
 	                    fixture:setUserData(entity)
 	                end
-	            end
 
-	            -- Attach hull/shield so HUD can display status for all players
-	            local stats = Ships and Ships.drone
-	            if stats then
-	                entity:give("hull", stats.max_hull)
-	                entity:give("shield", stats.max_shield, stats.shield_regen)
-	            end
+	                self.entity_map[id] = entity
+	            else
+	                entity = Concord.entity(world)
+	                entity:give("transform", x, y, r)
+	                entity:give("sector", sx, sy)
 
-	            -- Notify the game state when the local client's ship is ready
-	            if is_me then
-	                world:emit("client_ship_spawned", entity, true)
-	            end
+	                local color = is_me and {0.2, 1, 0.2} or {1, 0.2, 0.2}
+	                entity:give("render", { type = "drone", color = color }) -- Green if me, red if other
 
-	            if name ~= "" then
-	                if entity.name then
-	                    entity.name.value = name
+	                entity:give("network_identity", id)
+	                entity:give("network_sync", x, y, r, sx, sy)
+
+	                if is_me then
+	                    entity:give("input")      -- Local input storage
+
+	                    -- Give physics body to local player so we can predict movement
+	                    if world.physics_world then
+	                        local body = love.physics.newBody(world.physics_world, x, y, "dynamic")
+	                        body:setLinearDamping(Config.LINEAR_DAMPING)
+	                        body:setAngularDamping(Config.LINEAR_DAMPING)
+	                        body:setFixedRotation(true)
+
+	                        local shape   = love.physics.newCircleShape(10)
+	                        local fixture = love.physics.newFixture(body, shape, 1)
+	                        fixture:setRestitution(0.2)
+
+	                        entity:give("physics", body, shape, fixture)
+	                        entity:give("vehicle", Config.THRUST, Config.ROTATION_SPEED, Config.MAX_SPEED)
+	                        fixture:setUserData(entity)
+	                    end
 	                else
-	                    entity:give("name", name)
-	                end
-	            elseif is_me then
-	                entity:give("name", Config.PLAYER_NAME or "Player")
-	            end
+	                    if world.physics_world then
+	                        local body = love.physics.newBody(world.physics_world, x, y, "kinematic")
+	                        body:setLinearDamping(Config.LINEAR_DAMPING)
 
-	            self.entity_map[id] = entity
+	                        local shape   = love.physics.newCircleShape(10)
+	                        local fixture = love.physics.newFixture(body, shape, 1)
+	                        fixture:setRestitution(0.2)
+
+	                        entity:give("physics", body, shape, fixture)
+	                        fixture:setUserData(entity)
+	                    end
+	                end
+
+	                -- Attach hull/shield so HUD can display status for all players
+	                local stats = Ships and Ships.drone
+	                if stats then
+	                    entity:give("hull", stats.max_hull)
+	                    entity:give("shield", stats.max_shield, stats.shield_regen)
+	                end
+
+	                -- Notify the game state when the local client's ship is ready
+	                if is_me then
+	                    world:emit("client_ship_spawned", entity, true)
+	                end
+
+	                if name ~= "" then
+	                    if entity.name then
+	                        entity.name.value = name
+	                    else
+	                        entity:give("name", name)
+	                    end
+	                elseif is_me then
+	                    entity:give("name", Config.PLAYER_NAME or "Player")
+	                end
+
+	                self.entity_map[id] = entity
+	            end
 	        else
 	            -- Update target for interpolation
 	            if entity.network_sync then

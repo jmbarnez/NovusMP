@@ -90,3 +90,5 @@ Concord.component("network_sync", function(c, tx, ty, tr, tsx, tsy)
     c.target_sector_x = tsx or 0
     c.target_sector_y = tsy or 0
 end)
+
+Concord.component("asteroid")

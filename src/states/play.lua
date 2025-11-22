@@ -14,6 +14,7 @@ local PhysicsSystem = require "src.systems.physics"
 local Network       = require "src.systems.network"
 local RenderSystem  = require "src.systems.render"
 local ShipSystem    = require "src.systems.ship"
+local Asteroids     = require "src.systems.asteroid"
 
 local PlayState     = {}
 
@@ -97,6 +98,8 @@ function PlayState:enter(prev, role)
             -- Link inputs so Network Update (on Ship) -> Physics (via Player) works
             p.input = s.input
         end)
+
+        Asteroids.spawnField(self.world, 0, 0, Config.UNIVERSE_SEED, 40)
     elseif self.role == "CLIENT" then
         -- Clients spawn NOTHING initially.
         -- They wait for "WELCOME" to set ID, and "SNAP" to create the entity.
