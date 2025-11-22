@@ -2,8 +2,8 @@ local Constants = {}
 
 Constants.BACKGROUND = {
     STAR_SIZE = 16,
-    STAR_SPRITE_BATCH_SIZE = 3000,
-    STAR_COUNT = 200,
+    STAR_SPRITE_BATCH_SIZE = 500,
+    STAR_COUNT = 250,
     CLEAR_COLOR = {0.005, 0.005, 0.015, 1},
 
     STAR_COLORS = {

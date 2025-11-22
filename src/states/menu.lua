@@ -11,8 +11,32 @@ extern number time;
 vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords) {
     vec4 tex = Texel(texture, texture_coords) * color;
     if (tex.a <= 0.001) return tex;
-    float shimmer = 0.5 + 0.5 * sin(time * 2.0 + pixel_coords.x * 0.05);
-    return tex * vec4(1.0, 0.9 + 0.1*shimmer, 1.0, 1.0);
+
+    // Parameters for the aurora effect
+    float speed = 1.5;
+    float wave_frequency_x = 0.03;
+    float wave_frequency_y = 0.02;
+    float color_frequency = 0.5;
+    float color_amplitude = 0.4;
+    float base_brightness = 0.6; // Ensure text is visible even in darker parts
+
+    // Calculate wave pattern
+    float wave1 = sin(pixel_coords.x * wave_frequency_x + time * speed);
+    float wave2 = cos(pixel_coords.y * wave_frequency_y + time * speed * 0.7); // Slightly different speed/frequency
+
+    float combined_wave = (wave1 + wave2) * 0.5; // Combine waves
+
+    // Generate color based on wave and time
+    float r = sin(time * color_frequency + combined_wave * 2.0) * color_amplitude + base_brightness;
+    float g = sin(time * color_frequency + combined_wave * 2.0 + 2.0) * color_amplitude + base_brightness; // Phase shift
+    float b = sin(time * color_frequency + combined_wave * 2.0 + 4.0) * color_amplitude + base_brightness; // Phase shift
+
+    // Clamp values to [0, 1]
+    r = clamp(r, 0.0, 1.0);
+    g = clamp(g, 0.0, 1.0);
+    b = clamp(b, 0.0, 1.0);
+
+    return tex * vec4(r, g, b, 1.0);
 }
 ]]
 
@@ -133,9 +157,8 @@ end
 function MenuState:draw()
     local sw, sh = love.graphics.getDimensions()
 
-    -- 1. Clear to a simple background color (no starfield in menus)
-    local bg = Theme.getBackgroundColor()
-    love.graphics.clear(bg[1], bg[2], bg[3], bg[4])
+    -- 1. Clear to a simple background color (pitch black)
+    love.graphics.clear(0, 0, 0, 1)
 
     -- 2. Draw Title "NOVUS"
     love.graphics.setColor(1, 1, 1, 1)

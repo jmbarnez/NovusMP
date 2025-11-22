@@ -83,7 +83,70 @@ function RenderSystem:draw()
                 love.graphics.rotate(t.r or 0)
                 
                 love.graphics.setColor(r.color[1] or 1, r.color[2] or 1, r.color[3] or 1, r.color[4] or 1)
-                love.graphics.polygon("line", 15, 0, -10, -10, -5, 0, -10, 10)
+                
+                -- === REALISTIC 2D DRONE SHIP ===
+                
+                -- Main Body / Cockpit (central hexagon)
+                love.graphics.polygon("line", 
+                    8, 0,      -- front point
+                    4, 3,      -- top-right
+                    -2, 3,     -- back-right
+                    -6, 0,     -- back center
+                    -2, -3,    -- back-left
+                    4, -3      -- top-left
+                )
+                
+                -- Inner cockpit detail
+                love.graphics.polygon("line",
+                    4, 0,
+                    1, 2,
+                    -3, 2,
+                    -3, -2,
+                    1, -2
+                )
+                
+                -- Left Wing/Stabilizer
+                love.graphics.polygon("line",
+                    -2, 3,      -- wing root top
+                    -4, 8,      -- wing tip top
+                    -6, 8,      -- wing tip back
+                    -5, 3       -- wing root back
+                )
+                
+                -- Right Wing/Stabilizer
+                love.graphics.polygon("line",
+                    -2, -3,     -- wing root bottom
+                    -4, -8,     -- wing tip bottom
+                    -6, -8,     -- wing tip back
+                    -5, -3      -- wing root back
+                )
+                
+                -- Left Engine Pod
+                love.graphics.rectangle("line", -8, 6, 4, 3)
+                love.graphics.line(-8, 7.5, -4, 7.5) -- engine detail line
+                
+                -- Right Engine Pod
+                love.graphics.rectangle("line", -8, -9, 4, 3)
+                love.graphics.line(-8, -7.5, -4, -7.5) -- engine detail line
+                
+                -- Thruster Exhaust (back of engine pods)
+                love.graphics.setLineWidth(1.5)
+                love.graphics.line(-8, 7, -10, 7)
+                love.graphics.line(-8, 8, -10, 8)
+                love.graphics.line(-8, -7, -10, -7)
+                love.graphics.line(-8, -8, -10, -8)
+                love.graphics.setLineWidth(1)
+                
+                -- Front sensors/weapons
+                love.graphics.line(8, 0, 12, 0)
+                love.graphics.circle("line", 12, 0, 1.5)
+                
+                -- Technical details on wings
+                love.graphics.line(-3.5, 5.5, -5, 6)
+                love.graphics.line(-3.5, -5.5, -5, -6)
+                
+                -- Center line detail
+                love.graphics.line(-2, 0, 0, 0)
                 
                 love.graphics.pop()
             end

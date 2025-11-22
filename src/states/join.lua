@@ -173,9 +173,8 @@ end
 function JoinState:draw()
     local sw, sh = love.graphics.getDimensions()
 
-    -- 1. Clear to a simple background color (no starfield on this screen)
-    local bg = Theme.getBackgroundColor()
-    love.graphics.clear(bg[1], bg[2], bg[3], bg[4])
+    -- 1. Clear to a simple background color (pitch black)
+    love.graphics.clear(0, 0, 0, 1)
 
     -- 2. Title
     love.graphics.setColor(1, 1, 1, 1)
