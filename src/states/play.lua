@@ -5,6 +5,7 @@ local Concord    = require "concord"
 local Config     = require "src.config"
 local Background = require "src.background"
 local Chat       = require "src.ui.chat"
+local HUD        = require "src.ui.hud"
 
 require "src.components"
 
@@ -100,8 +101,7 @@ function PlayState:draw()
 
     -- HUD
     love.graphics.origin()
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.print("Mode: " .. self.role, 10, 70)
+    HUD.draw(self.world)
 end
 
 -- Promote an existing single-player session into a hosted session so others can join.
@@ -124,6 +124,7 @@ function PlayState:enableHosting()
     local inputSystem = self.world:getSystem(InputSystem)
     if inputSystem then inputSystem:setRole("HOST") end
 
+    Chat.system("Mode changed to HOST. Other players can now connect.")
     print("Hosting enabled: other players can now connect.")
     return true
 end

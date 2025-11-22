@@ -147,20 +147,6 @@ function RenderSystem:draw()
     else
         draw_world_content()
     end
-
-    -- 5. Draw HUD
-    love.graphics.origin()
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.print("FPS: " .. love.timer.getFPS(), 10, 10)
-
-    -- Safely handle nil values for camera position
-    local sector_x_display = cam_sector_x or "N/A"
-    local sector_y_display = cam_sector_y or "N/A"
-    local pos_x_display = cam_x and math.floor(cam_x) or "N/A"
-    local pos_y_display = cam_y and math.floor(cam_y) or "N/A"
-
-    love.graphics.print("Sector: [" .. sector_x_display .. ", " .. sector_y_display .. "]", 10, 30)
-    love.graphics.print("Local Pos: " .. pos_x_display .. ", " .. pos_y_display, 10, 50)
 end
 
 return RenderSystem

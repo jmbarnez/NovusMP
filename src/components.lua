@@ -45,6 +45,17 @@ Concord.component("name", function(c, value)
     c.value = value or ""
 end)
 
+Concord.component("hull", function(c, max, current)
+    c.max = max or 100
+    c.current = current or c.max
+end)
+
+Concord.component("shield", function(c, max, regen)
+    c.max = max or 100
+    c.current = max or 100
+    c.regen = regen or 0
+end)
+
 -- Pilot/Ship Separation
 Concord.component("pilot")
 

@@ -32,6 +32,8 @@ Theme.fonts = {
     title = {path = "assets/fonts/Orbitron-Regular.ttf", size = 128},
     button = {path = "assets/fonts/Orbitron-Regular.ttf", size = 20},
     chat = {path = "assets/fonts/Orbitron-Regular.ttf", size = 14},
+    header = {path = "assets/fonts/Orbitron-Regular.ttf", size = 16},
+    default = {path = "assets/fonts/Orbitron-Regular.ttf", size = 12},
 }
 
 local fontCache = {}

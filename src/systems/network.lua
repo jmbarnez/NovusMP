@@ -344,6 +344,7 @@ function NetworkIOSystem:processSnapshot(data)
                     local body = love.physics.newBody(world.physics_world, x, y, "dynamic")
                     body:setLinearDamping(Config.LINEAR_DAMPING)
                     body:setAngularDamping(Config.LINEAR_DAMPING)
+                    body:setFixedRotation(true)
 
                     local shape = love.physics.newCircleShape(10)
                     local fixture = love.physics.newFixture(body, shape, 1)
@@ -392,6 +393,8 @@ function NetworkIOSystem:processSnapshot(data)
                 if is_me and entity.transform and entity.sector then
                     -- Calculate distance between predicted (current) and server (target)
                     local dist_sq = (entity.transform.x - x)^2 + (entity.transform.y - y)^2
+                    local snap_dist = Config.RECONCILE_SNAP_DISTANCE or 150
+                    local snap_dist_sq = snap_dist * snap_dist
 
                     -- If sector mismatch, snap immediately
                     if entity.sector.x ~= sx or entity.sector.y ~= sy then
@@ -402,8 +405,8 @@ function NetworkIOSystem:processSnapshot(data)
                         entity.transform.y = y
                         entity.sector.x = sx
                         entity.sector.y = sy
-                    -- If position drift is too large (> 50 units), snap
-                    elseif dist_sq > 2500 then
+                    -- If position drift is too large, snap (use configurable threshold)
+                    elseif dist_sq > snap_dist_sq then
                         if entity.physics and entity.physics.body then
                             entity.physics.body:setPosition(x, y)
                         end

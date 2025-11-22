@@ -8,6 +8,8 @@ local PhysicsSystem = Concord.system({
 function PhysicsSystem:init()
     self.role = "SINGLE"
     self.callbacks_registered = false
+    self.accumulator = 0
+    self.fixed_dt = 1 / 60
 end
 
 function PhysicsSystem:setRole(role)
@@ -44,8 +46,12 @@ function PhysicsSystem:update(dt)
         self.callbacks_registered = true
     end
     
-    -- 1. Step Simulation
-    world.physics_world:update(dt)
+    -- 1. Step Simulation (fixed timestep for determinism)
+    self.accumulator = self.accumulator + dt
+    while self.accumulator >= self.fixed_dt do
+        world.physics_world:update(self.fixed_dt)
+        self.accumulator = self.accumulator - self.fixed_dt
+    end
 
     -- 2. Handle Wrapping
     local half_size = Config.SECTOR_SIZE / 2

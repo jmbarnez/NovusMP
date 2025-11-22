@@ -14,11 +14,12 @@ return {
     SEND_RATE = 0.03,
 
     -- Physics / Gameplay
-    THRUST = 400,
-    MAX_SPEED = 600,
+    THRUST = 120,
+    MAX_SPEED = 200,
     ROTATION_SPEED = 4,
     LINEAR_DAMPING = 2.5,
     LERP_FACTOR = 10.0,
+    RECONCILE_SNAP_DISTANCE = 150,
     
     -- Infinite Universe Config
     SECTOR_SIZE = 10000, -- The width/height of one "Sector" before coordinates wrap

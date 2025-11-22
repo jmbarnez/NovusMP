@@ -13,6 +13,11 @@ return {
     rotation_speed = Config.ROTATION_SPEED,
     max_speed = Config.MAX_SPEED,
 
+    -- Stats
+    max_hull = 100,
+    max_shield = 100,
+    shield_regen = 5, -- per second
+
     -- Render
     render_type = "drone",
     draw = function(color)
