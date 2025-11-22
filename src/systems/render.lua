@@ -216,6 +216,78 @@ function RenderSystem:draw()
                             end
                         end
                     end
+                elseif e.asteroid_chunk then
+                    -- Render asteroid chunks (simpler than full asteroids)
+                    local color = { 1, 1, 1, 1 }
+                    if type(r) == "table" then
+                        if type(r.color) == "table" then
+                            color = r.color
+                        elseif #r >= 3 then
+                            color = r
+                        end
+                    elseif type(r) == "number" then
+                        color = { r, r, r, 1 }
+                    end
+
+                    local cr = color[1] or 1
+                    local cg = color[2] or 1
+                    local cb = color[3] or 1
+                    local ca = color[4] or 1
+                    
+                    -- apply fade out based on lifetime if available
+                    if e.lifetime then
+                        local fade = 1.0 - (e.lifetime.elapsed / e.lifetime.duration)
+                        ca = ca * math.max(0, fade)
+                    end
+                    
+                    love.graphics.setColor(cr, cg, cb, ca)
+
+                    local radius = 10
+                    if type(r) == "table" and r.radius then
+                        radius = r.radius
+                    end
+
+                    local key = tostring(e)
+
+                    local poly = asteroidShapes[key]
+                    if not poly then
+                        poly = {}
+                        local seed = hashString(key)
+                        local rng = (love and love.math and love.math.newRandomGenerator) and love.math.newRandomGenerator(seed) or nil
+                        local function rnd()
+                            if rng and rng.random then
+                                return rng:random()
+                            else
+                                return math.random()
+                            end
+                        end
+
+                        -- Simpler polygon for chunks (fewer vertices)
+                        local vertex_count = 4 + math.floor(rnd() * 3)
+                        if vertex_count < 4 then vertex_count = 4 end
+
+                        for i = 1, vertex_count do
+                            local angle = (i / vertex_count) * math.pi * 2 + (rnd() - 0.5) * 0.6
+                            local rr = radius * (0.6 + rnd() * 0.5)
+                            table.insert(poly, math.cos(angle) * rr)
+                            table.insert(poly, math.sin(angle) * rr)
+                        end
+
+                        asteroidShapes[key] = poly
+                    end
+
+                    love.graphics.polygon("fill", poly)
+
+                    -- No inner highlight for chunks, just outline
+                    local orr = (cr or 1) * 0.5
+                    local org = (cg or 1) * 0.5
+                    local orb = (cb or 1) * 0.5
+                    local ora = ca or 1
+                    local oldLineWidth = love.graphics.getLineWidth()
+                    love.graphics.setColor(orr, org, orb, ora)
+                    love.graphics.setLineWidth(1.5)
+                    love.graphics.polygon("line", poly)
+                    love.graphics.setLineWidth(oldLineWidth)
                 elseif type(r) == "table" and r.type then
                     if r.type == "projectile" then
                         local color = r.color or { 1, 1, 1, 1 }

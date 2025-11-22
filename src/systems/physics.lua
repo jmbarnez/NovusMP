@@ -87,6 +87,67 @@ function PhysicsSystem:update(dt)
 
         local hp = e.hp
         if hp and hp.current and hp.current <= 0 then
+            -- Spawn chunks before destroying asteroid
+            if e.asteroid and e.render then
+                local r = e.render
+                local parent_radius = r.radius or 10
+                local parent_color = r.color or {0.6, 0.6, 0.6, 1}
+                
+                -- Spawn 3-5 chunks with mass conservation
+                local num_chunks = 3 + math.random(0, 2)
+                
+                -- Calculate max chunk radius to conserve mass
+                -- In 2D: total area of chunks ≤ parent area
+                -- Area = π*r², so for N equal chunks: N * π*rchunk² ≤ π*rparent²
+                -- Therefore: rchunk ≤ rparent / sqrt(N)
+                local max_chunk_radius = parent_radius / math.sqrt(num_chunks)
+                
+                for i = 1, num_chunks do
+                    -- Random size with variance but respecting mass conservation
+                    local chunk_radius = max_chunk_radius * (0.6 + math.random() * 0.4)
+                    
+                    -- Random angle for radial distribution
+                    local angle = (math.pi * 2 / num_chunks) * i + (math.random() - 0.5) * 0.5
+                    
+                    -- Spawn position slightly offset from asteroid center
+                    local spawn_x = t.x + math.cos(angle) * parent_radius * 0.5
+                    local spawn_y = t.y + math.sin(angle) * parent_radius * 0.5
+                    
+                    -- Create chunk entity
+                    local chunk = Concord.entity(world)
+                    chunk:give("transform", spawn_x, spawn_y, math.random() * math.pi * 2)
+                    chunk:give("sector", s.x, s.y)
+                    chunk:give("render", {
+                        render_type = "asteroid_chunk",
+                        color = parent_color,
+                        radius = chunk_radius
+                    })
+                    chunk:give("asteroid_chunk")
+                    chunk:give("lifetime", 2.0 + math.random() * 2.0)
+                    
+                    -- Create physics body for chunk
+                    local chunk_body = love.physics.newBody(world.physics_world, spawn_x, spawn_y, "dynamic")
+                    chunk_body:setLinearDamping(1.0)
+                    chunk_body:setAngularDamping(1.0)
+                    
+                    local chunk_shape = love.physics.newCircleShape(chunk_radius * 0.8)
+                    local chunk_fixture = love.physics.newFixture(chunk_body, chunk_shape, 0.5)
+                    chunk_fixture:setRestitution(0.2)
+                    chunk_fixture:setUserData(chunk)
+                    
+                    chunk:give("physics", chunk_body, chunk_shape, chunk_fixture)
+                    
+                    -- Apply outward velocity
+                    local speed = 50 + math.random() * 100
+                    chunk_body:setLinearVelocity(
+                        math.cos(angle) * speed,
+                        math.sin(angle) * speed
+                    )
+                    chunk_body:setAngularVelocity((math.random() - 0.5) * 4)
+                end
+            end
+            
+            -- Now destroy the asteroid
             if p.fixture then
                 p.fixture:setUserData(nil)
             end

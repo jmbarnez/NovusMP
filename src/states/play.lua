@@ -4,7 +4,6 @@ local Camera           = require "hump.camera"
 local Concord          = require "concord"
 local Config           = require "src.config"
 local Background       = require "src.background"
-local Chat             = require "src.hud.chat"
 local HUD              = require "src.hud.hud"
 local SaveManager      = require "src.managers.save_manager"
 
@@ -18,6 +17,7 @@ local ShipSystem       = require "src.systems.ship"
 local Asteroids        = require "src.systems.asteroid"
 local WeaponSystem     = require "src.systems.weapon"
 local ProjectileSystem = require "src.systems.projectile"
+local AsteroidChunkSystem = require "src.systems.asteroid_chunk"
 
 local PlayState        = {}
 
@@ -43,17 +43,13 @@ local function setSystemRoles(world)
     if sys_proj and sys_proj.setRole then
         sys_proj:setRole(role_str)
     end
-end
 
-local function setupChat(world)
-    if not Chat.isEnabled() then
-        return
+    local sys_chunk = world:getSystem(AsteroidChunkSystem)
+    if sys_chunk and sys_chunk.setRole then
+        sys_chunk:setRole(role_str)
     end
-
-    Chat.setSendHandler(function(message)
-        Chat.addMessage("You: " .. message, "text")
-    end)
 end
+
 
 local function createLocalPlayer(world)
     local player = Concord.entity(world)
@@ -145,8 +141,6 @@ function PlayState:enter(prev, param)
     self.world = Concord.world()
     self.world.background = Background.new()
 
-    Chat.enable()
-    Chat.system("Entered game as " .. self.role)
 
     -- Camera
     self.world.camera = Camera.new()
@@ -172,12 +166,12 @@ function PlayState:enter(prev, param)
         PhysicsSystem,
         WeaponSystem,
         ProjectileSystem,
+        AsteroidChunkSystem,
         RenderSystem,
         MinimapSystem
     )
 
     setSystemRoles(self.world)
-    setupChat(self.world)
 
     -- Player meta-entity (local user, not the ship itself)
     self.player = createLocalPlayer(self.world)
@@ -243,22 +237,14 @@ end
 function PlayState:keypressed(key)
     if key == "f5" then
         SaveManager.save(1, self.world, self.player)
-        if Chat and Chat.system then
-            Chat.system("Game saved.")
-        end
     elseif key == "f9" then
         if SaveManager.has_save(1) then
             Gamestate.switch(PlayState, { mode = "load", slot = 1 })
         else
-            if Chat and Chat.system then
-                Chat.system("No save file found.")
-            end
+            -- No save file
         end
     end
 end
 
-function PlayState:leave()
-    Chat.disable()
-end
 
 return PlayState

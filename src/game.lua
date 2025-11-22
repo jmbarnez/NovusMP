@@ -4,15 +4,10 @@
 local Gamestate     = require "hump.gamestate"
 local Config        = require "src.config"
 local MenuState     = require "src.states.menu"
-local Chat          = require "src.hud.chat"
 local Lurker        = require "lurker"
 local WeaponManager = require "src.managers.weapon_manager"
 
 function love.load()
-    -- Initialize Chat
-    Chat.init()
-    Chat.system("System initialized.")
-
     WeaponManager.load_plugins()
     
     -- Start game in Menu
@@ -22,21 +17,17 @@ end
 function love.update(dt)
     Lurker.update(dt)
     Gamestate.update(dt)
-    Chat.update(dt)
 end
 
 function love.draw()
     Gamestate.draw()
-    Chat.draw()
 end
 
 function love.keypressed(key, scancode, isrepeat)
-    if Chat.keypressed(key) then return end
     Gamestate.keypressed(key, scancode, isrepeat)
 end
 
 function love.textinput(t)
-    if Chat.textinput(t) then return end
     Gamestate.textinput(t)
 end
 

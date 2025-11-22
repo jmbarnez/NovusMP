@@ -118,3 +118,10 @@ Concord.component("hp", function(c, max, current)
 end)
 
 Concord.component("asteroid")
+
+Concord.component("asteroid_chunk")
+
+Concord.component("lifetime", function(c, duration)
+    c.duration = duration or 3.0
+    c.elapsed = 0
+end)
