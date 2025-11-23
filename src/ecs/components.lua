@@ -127,3 +127,22 @@ local Concord = require "concord"
      c.duration = duration or 3.0
      c.elapsed = 0
  end)
+
+Concord.component("item", function(c, type, name, volume)
+    c.type = type or "resource"
+    c.name = name or "Unknown Item"
+    c.volume = volume or 1.0
+end)
+
+
+
+Concord.component("cargo", function(c, capacity)
+    c.capacity = capacity or 100 -- Now represents volume
+    c.current = 0
+    c.items = {} -- table of {name="Stone", count=1}
+end)
+
+Concord.component("magnet", function(c, radius, force)
+    c.radius = radius or 100
+    c.force = force or 500
+end)

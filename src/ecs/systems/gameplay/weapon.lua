@@ -1,17 +1,12 @@
 local Concord = require "concord"
 local WeaponManager = require "src.managers.weapon_manager"
+local MathUtils = require "src.utils.math_utils"
 
 local WeaponSystem = Concord.system({
     pool = { "weapon", "input", "transform", "sector" }
 })
 
-function WeaponSystem:init()
-    self.role = "SINGLE"
-end
 
-function WeaponSystem:setRole(role)
-    self.role = role
-end
 
 function WeaponSystem:update(dt)
     local world = self:getWorld()
@@ -47,18 +42,10 @@ function WeaponSystem:update(dt)
                 max_offset = math.pi
             end
         end
-        local diff = desired_angle - base_angle
-        while diff < -math.pi do
-            diff = diff + math.pi * 2
-        end
-        while diff > math.pi do
-            diff = diff - math.pi * 2
-        end
-        if diff > max_offset then
-            diff = max_offset
-        elseif diff < -max_offset then
-            diff = -max_offset
-        end
+        -- Use MathUtils for angle difference calculation
+        local diff = MathUtils.angle_difference(base_angle, desired_angle)
+        diff = MathUtils.clamp(diff, -max_offset, max_offset)
+        
         local angle = base_angle + diff
         local cos_a = math.cos(angle)
         local sin_a = math.sin(angle)

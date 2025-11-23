@@ -6,6 +6,7 @@ local Config           = require "src.config"
 local Background       = require "src.rendering.background"
 local HUD              = require "src.ui.hud.hud"
 local SaveManager      = require "src.managers.save_manager"
+local CollisionHandlers = require "src.utils.collision_handlers"
 
 require "src.ecs.components"
 
@@ -19,42 +20,11 @@ local WeaponSystem     = require "src.ecs.systems.gameplay.weapon"
 local ProjectileSystem = require "src.ecs.systems.gameplay.projectile"
 local AsteroidChunkSystem = require "src.ecs.systems.visual.asteroid_chunk"
 local ProjectileShardSystem = require "src.ecs.systems.visual.projectile_shard"
+local ItemPickupSystem = require "src.ecs.systems.gameplay.item_pickup"
 
 local PlayState        = {}
 
-local function setSystemRoles(world)
-    local role_str = "SINGLE"
 
-    local sys_phys = world:getSystem(PhysicsSystem)
-    if sys_phys and sys_phys.setRole then
-        sys_phys:setRole(role_str)
-    end
-
-    local sys_input = world:getSystem(InputSystem)
-    if sys_input and sys_input.setRole then
-        sys_input:setRole(role_str)
-    end
-
-    local sys_weapon = world:getSystem(WeaponSystem)
-    if sys_weapon and sys_weapon.setRole then
-        sys_weapon:setRole(role_str)
-    end
-
-    local sys_proj = world:getSystem(ProjectileSystem)
-    if sys_proj and sys_proj.setRole then
-        sys_proj:setRole(role_str)
-    end
-
-    local sys_chunk = world:getSystem(AsteroidChunkSystem)
-    if sys_chunk and sys_chunk.setRole then
-        sys_chunk:setRole(role_str)
-    end
-
-    local sys_shard = world:getSystem(ProjectileShardSystem)
-    if sys_shard and sys_shard.setRole then
-        sys_shard:setRole(role_str)
-    end
-end
 
 
 local function createLocalPlayer(world)
@@ -80,73 +50,26 @@ local function registerSpawnHandlers(self)
         local a = entityA
         local b = entityB
 
-        local projectile
-        local target
+        local projectile, target
 
-        if a and a.projectile and b and b.asteroid then
+        -- Check for projectile hitting asteroid or asteroid_chunk
+        if a and a.projectile and b and (b.asteroid or b.asteroid_chunk) then
             projectile = a
             target = b
-        elseif b and b.projectile and a and a.asteroid then
+        elseif b and b.projectile and a and (a.asteroid or a.asteroid_chunk) then
             projectile = b
             target = a
         else
             return
         end
 
-        if not (projectile and projectile.projectile and target and target.hp) then
-            return
-        end
-
-        local projComp = projectile.projectile
-        local hp = target.hp
-
-        if projComp.lifetime and projComp.lifetime <= 0 then
-            return
-        end
-
-        local damage = projComp.damage or 0
-        if damage <= 0 then
-            projComp.lifetime = 0
-            return
-        end
-
-        local current = hp.current or hp.max or 0
-        current = current - damage
-        if current < 0 then
-            current = 0
-        end
-        hp.current = current
-
-        if love and love.timer and love.timer.getTime then
-            hp.last_hit_time = love.timer.getTime()
-        end
-
-        -- Queue projectile shards for spawning (deferred to avoid physics callback issues)
-        if projectile.transform and projectile.render and projectile.sector then
-            local pt = projectile.transform
-            local pr = projectile.render
-            local ps = projectile.sector
-            
-            -- Store spawn data in world table for deferred spawning
-            if not self.world.pending_shards then
-                self.world.pending_shards = {}
-            end
-            
-            table.insert(self.world.pending_shards, {
-                x = pt.x,
-                y = pt.y,
-                sector_x = ps.x,
-                sector_y = ps.y,
-                color = pr.color or {1, 1, 1, 1}
-            })
-        end
-
-        projComp.lifetime = 0
+        -- Use collision handler utility
+        CollisionHandlers.handle_projectile_asteroid(projectile, target, self.world)
     end)
 end
 
 function PlayState:enter(prev, param)
-    self.role = "SINGLE"
+
 
     local loadParams
     if type(param) == "table" then
@@ -195,10 +118,11 @@ function PlayState:enter(prev, param)
         AsteroidChunkSystem,
         ProjectileShardSystem,
         RenderSystem,
-        MinimapSystem
+        MinimapSystem,
+        ItemPickupSystem
     )
 
-    setSystemRoles(self.world)
+
 
     -- Player meta-entity (local user, not the ship itself)
     self.player = createLocalPlayer(self.world)
@@ -251,53 +175,6 @@ function PlayState:update(dt)
     end
 
     self.world:emit("update", dt)
-    
-    -- Spawn queued projectile shards after physics step
-    if self.world.pending_shards and #self.world.pending_shards > 0 then
-        for _, shard_data in ipairs(self.world.pending_shards) do
-            local num_shards = 4 + math.random(0, 2)
-            local shard_size = 2 + math.random() * 2
-            
-            for i = 1, num_shards do
-                local angle = (math.pi * 2 / num_shards) * i + (math.random() - 0.5) * 1.0
-                local spawn_x = shard_data.x + math.cos(angle) * 3
-                local spawn_y = shard_data.y + math.sin(angle) * 3
-                
-                local shard = Concord.entity(self.world)
-                shard:give("transform", spawn_x, spawn_y, math.random() * math.pi * 2)
-                shard:give("sector", shard_data.sector_x, shard_data.sector_y)
-                shard:give("render", {
-                    render_type = "projectile_shard",
-                    color = shard_data.color,
-                    radius = shard_size
-                })
-                shard:give("projectile_shard")
-                shard:give("lifetime", 0.3 + math.random() * 0.4)
-                
-                -- Create physics for shards
-                local shard_body = love.physics.newBody(self.world.physics_world, spawn_x, spawn_y, "dynamic")
-                shard_body:setLinearDamping(0.5)
-                shard_body:setGravityScale(0)
-                
-                local shard_shape = love.physics.newCircleShape(shard_size * 0.3)
-                local shard_fixture = love.physics.newFixture(shard_body, shard_shape, 0.1)
-                shard_fixture:setSensor(true)
-                shard_fixture:setUserData(shard)
-                
-                shard:give("physics", shard_body, shard_shape, shard_fixture)
-                
-                local speed = 80 + math.random() * 60
-                shard_body:setLinearVelocity(
-                    math.cos(angle) * speed,
-                    math.sin(angle) * speed
-                )
-                shard_body:setAngularVelocity((math.random() - 0.5) * 8)
-            end
-        end
-        
-        -- Clear the queue
-        self.world.pending_shards = {}
-    end
 end
 
 function PlayState:draw()

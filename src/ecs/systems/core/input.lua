@@ -1,4 +1,5 @@
 local Concord = require "concord"
+local MathUtils = require "src.utils.math_utils"
 
 -- This system now has two distinct responsibilities:
 -- 1. CLIENT/LOCAL: Read hardware inputs (Baton) and store them in the Input Component.
@@ -9,13 +10,7 @@ local InputSystem = Concord.system({
     controllers = {"input", "controlling"}
 })
 
-function InputSystem:init()
-    self.role = "SINGLE" -- Default
-end
 
-function InputSystem:setRole(role)
-    self.role = role
-end
 
 function InputSystem:update(dt)
     local world = self:getWorld()
@@ -71,79 +66,63 @@ function InputSystem:update(dt)
         end
     end
 
-    -- 2. APPLY PHYSICS (Host / Single Player / Client Prediction)
-    -- Clients NOW run this for their own 'pilot' entity
-    if self.role == "HOST" or self.role == "SINGLE" or self.role == "CLIENT" then
-        for _, e in ipairs(self.controllers) do
-            -- If Client, ONLY apply to self (pilot)
-            if self.role == "CLIENT" and not e:has("pilot") then
-                goto continue_input
+    -- 2. APPLY PHYSICS
+    for _, e in ipairs(self.controllers) do
+        local input = e.input
+        local ship = e.controlling.entity
+
+        if ship and ship.physics and ship.vehicle and ship.transform and ship.physics.body then
+            local body = ship.physics.body
+            local stats = ship.vehicle
+            local trans = ship.transform
+
+            local current_angle = body:getAngle()
+
+            -- A. Handle Rotation
+            if input.target_angle then
+                local desired = input.target_angle
+                local diff = MathUtils.angle_difference(current_angle, desired)
+
+                local max_step = stats.turn_speed * dt
+                diff = MathUtils.clamp(diff, -max_step, max_step)
+
+                current_angle = current_angle + diff
+                body:setAngle(current_angle)
+            elseif input.turn ~= 0 then
+                current_angle = current_angle + input.turn * stats.turn_speed * dt
+                body:setAngle(current_angle)
             end
 
-            local input = e.input
-            local ship = e.controlling.entity
-
-            if ship and ship.physics and ship.vehicle and ship.transform and ship.physics.body then
-                local body = ship.physics.body
-                local stats = ship.vehicle
-                local trans = ship.transform
-
-                local current_angle = body:getAngle()
-
-                -- A. Handle Rotation
-                if input.target_angle then
-                    local desired = input.target_angle
-                    local diff = desired - current_angle
-                    while diff < -math.pi do diff = diff + math.pi * 2 end
-                    while diff >  math.pi do diff = diff - math.pi * 2 end
-
-                    local max_step = stats.turn_speed * dt
-                    if diff > max_step then
-                        diff = max_step
-                    elseif diff < -max_step then
-                        diff = -max_step
-                    end
-
-                    current_angle = current_angle + diff
-                    body:setAngle(current_angle)
-                elseif input.turn ~= 0 then
-                    current_angle = current_angle + input.turn * stats.turn_speed * dt
-                    body:setAngle(current_angle)
+            -- B. Handle Thrust / Movement
+            local fx, fy = 0, 0
+            if input.move_x and input.move_y and (input.move_x ~= 0 or input.move_y ~= 0) then
+                local len = math.sqrt(input.move_x * input.move_x + input.move_y * input.move_y)
+                if len > 0 then
+                    local nx = input.move_x / len
+                    local ny = input.move_y / len
+                    fx = nx * stats.thrust
+                    fy = ny * stats.thrust
                 end
-
-                -- B. Handle Thrust / Movement
-                local fx, fy = 0, 0
-                if input.move_x and input.move_y and (input.move_x ~= 0 or input.move_y ~= 0) then
-                    local len = math.sqrt(input.move_x * input.move_x + input.move_y * input.move_y)
-                    if len > 0 then
-                        local nx = input.move_x / len
-                        local ny = input.move_y / len
-                        fx = nx * stats.thrust
-                        fy = ny * stats.thrust
-                    end
-                elseif input.thrust then
-                    local angle = body:getAngle()
-                    fx = math.cos(angle) * stats.thrust
-                    fy = math.sin(angle) * stats.thrust
-                end
-
-                if fx ~= 0 or fy ~= 0 then
-                    body:applyForce(fx, fy)
-                end
-
-                -- C. Cap Speed
-                local vx, vy = body:getLinearVelocity()
-                local speed = math.sqrt(vx * vx + vy * vy)
-                if speed > stats.max_speed then
-                    local scale = stats.max_speed / speed
-                    body:setLinearVelocity(vx * scale, vy * scale)
-                end
-
-                -- D. Sync Transform
-                trans.r = body:getAngle()
+            elseif input.thrust then
+                local angle = body:getAngle()
+                fx = math.cos(angle) * stats.thrust
+                fy = math.sin(angle) * stats.thrust
             end
-            
-            ::continue_input::
+
+            if fx ~= 0 or fy ~= 0 then
+                body:applyForce(fx, fy)
+            end
+
+            -- C. Cap Speed
+            local vx, vy = body:getLinearVelocity()
+            local speed = math.sqrt(vx * vx + vy * vy)
+            if speed > stats.max_speed then
+                local scale = stats.max_speed / speed
+                body:setLinearVelocity(vx * scale, vy * scale)
+            end
+
+            -- D. Sync Transform
+            trans.r = body:getAngle()
         end
     end
 end

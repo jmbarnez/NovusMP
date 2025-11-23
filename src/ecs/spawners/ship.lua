@@ -43,6 +43,8 @@ function ShipManager.spawn(world, ship_type_key, x, y, is_host_player)
     ship:give("input")
     ship:give("weapon", "pulse_laser")
     ship:give("level")
+    ship:give("cargo", 50) -- Default capacity 50 (volume)
+    ship:give("magnet", 150, 50) -- Radius 150, Force 50 (greatly reduced)
 
     return ship
 end

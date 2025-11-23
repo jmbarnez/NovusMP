@@ -1,16 +1,12 @@
 local Concord = require "concord"
+local EntityUtils = require "src.utils.entity_utils"
+local VFXSpawners = require "src.utils.vfx_spawners"
 
 local ProjectileSystem = Concord.system({
     pool = { "projectile" }
 })
 
-function ProjectileSystem:init()
-    self.role = "SINGLE"
-end
 
-function ProjectileSystem:setRole(role)
-    self.role = role
-end
 
 function ProjectileSystem:update(dt)
     local world = self:getWorld()
@@ -20,16 +16,20 @@ function ProjectileSystem:update(dt)
         projectile.lifetime = (projectile.lifetime or 0) - dt
 
         if projectile.lifetime <= 0 then
-            if e.physics and e.physics.body then
-                local body = e.physics.body
-                local fixture = e.physics.fixture
-                if fixture then
-                    fixture:setUserData(nil)
-                end
-                body:destroy()
+            -- Spawn shards at projectile location before destroying
+            if e.transform and e.render and e.sector then
+                local color = e.render.color or {1, 1, 1, 1}
+                VFXSpawners.spawn_projectile_shards(
+                    world,
+                    e.transform.x,
+                    e.transform.y,
+                    e.sector.x,
+                    e.sector.y,
+                    color
+                )
             end
-
-            e:destroy()
+            
+            EntityUtils.cleanup_physics_entity(e)
         end
     end
 end
